@@ -26,6 +26,7 @@ int update_handler(const char *path, const char *types, lo_arg **argv,
 void osc_error(int num, const char *msg, const char *path)
 {
     printf("liblo server error %d in path %s: %s\n", num, path, msg);
+    exit(1);
 }
 
 int main(int argc, char *argv[])
@@ -49,7 +50,6 @@ int main(int argc, char *argv[])
     snprintf(full_path, 255, "%s/update", path);
 
     st = lo_server_thread_new("4445", NULL);
-printf("registering %s\n", path);
     lo_server_thread_add_method(st, path, "if", update_handler,
 				osc_error);
     lo_server_thread_start(st);

@@ -32,6 +32,9 @@ int main(int argc, char *argv[])
     printf("sending osc://%s:%s%s %d %f\n", host, port, path, ladspa_port,
 	   value);
     lo_send(t, path, "if", ladspa_port, value);
+    if (lo_target_errno(t)) {
+	printf("liblo error: %s\n", lo_target_errstr(t));
+    }
     free(host);
     free(port);
     free(path);
