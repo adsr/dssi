@@ -197,7 +197,7 @@ static void runSampler(LADSPA_Handle instance, unsigned long sample_count,
 		    plugin_data->onsets[n.note] = -1;
 		}
 	    } else if (events[event_pos].type == SND_SEQ_EVENT_NOTEOFF &&
-		       (!plugin_data->sustain || !*plugin_data->sustain)) {
+		       (!plugin_data->sustain || (*plugin_data->sustain < 0.001))) {
 		snd_seq_ev_note_t n = events[event_pos].data.note;
 		plugin_data->onsets[n.note] = -1;
 	    }
@@ -312,6 +312,11 @@ char *samplerLoad(Sampler *plugin_data, const char *path)
     plugin_data->sampleData = tmpSamples;
     plugin_data->sampleCount = samples;
 
+    for (i = 0; i < MIDI_NOTES; ++i) {
+	plugin_data->onsets[i] = -1;
+	plugin_data->velocities[i] = 0;
+    }
+
     pthread_mutex_unlock(&plugin_data->mutex);
 
     if (tmpOld) {
@@ -388,10 +393,10 @@ void _init()
 	port_descriptors[Sampler_SUSTAIN] = LADSPA_PORT_INPUT | LADSPA_PORT_CONTROL;
 	port_names[Sampler_SUSTAIN] = "Sustain on/off";
 	port_range_hints[Sampler_SUSTAIN].HintDescriptor =
-			LADSPA_HINT_DEFAULT_MINIMUM |
+			LADSPA_HINT_DEFAULT_MAXIMUM | LADSPA_HINT_INTEGER |
 			LADSPA_HINT_BOUNDED_BELOW | LADSPA_HINT_BOUNDED_ABOVE;
 	port_range_hints[Sampler_SUSTAIN].LowerBound = 0.0f;
-	port_range_hints[Sampler_SUSTAIN].UpperBound = 127.0f;
+	port_range_hints[Sampler_SUSTAIN].UpperBound = 1.0f;
 
 	samplerLDescriptor->activate = activateSampler;
 	samplerLDescriptor->cleanup = cleanupSampler;

@@ -39,6 +39,7 @@ public:
     void setHostRequestedQuit(bool r) { m_hostRequestedQuit = r; }
 
 public slots:
+    void setSampleFile(QString file);
     void setBasePitch(int pitch);
     void setSustain(bool sustain);
     void aboutToQuit();

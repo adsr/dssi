@@ -48,6 +48,8 @@ using std::endl;
 
 lo_server osc_server = 0;
 
+#define NO_SAMPLE_TEXT "<none loaded>   "
+
 SamplerGUI::SamplerGUI(QString host, QString port,
 		       QString controlPath, QString midiPath, QString configurePath,
 		       QString exitingPath, QWidget *w) :
@@ -68,7 +70,7 @@ SamplerGUI::SamplerGUI(QString host, QString port,
     layout->addWidget(new QLabel("Base MIDI pitch:  ", this), 1, 0, Qt::AlignRight);
     layout->addWidget(new QLabel("Sustain:  ", this), 2, 0, Qt::AlignRight);
 
-    m_sampleFile = new QLabel("<none loaded>  ", this);
+    m_sampleFile = new QLabel(NO_SAMPLE_TEXT, this);
     layout->addMultiCellWidget(m_sampleFile, 0, 0, 1, 1, Qt::AlignLeft);
 
     QPushButton *loadButton = new QPushButton(" ... ", this);
@@ -104,6 +106,14 @@ SamplerGUI::SamplerGUI(QString host, QString port,
 }
 
 void
+SamplerGUI::setSampleFile(QString file)
+{
+    m_suppressHostUpdate = true;
+    m_sampleFile->setText(file);
+    m_suppressHostUpdate = false;
+}
+
+void
 SamplerGUI::setBasePitch(int pitch)
 {
     m_suppressHostUpdate = true;
@@ -131,16 +141,20 @@ void
 SamplerGUI::sustainChanged(bool on)
 {
     if (!m_suppressHostUpdate) {
-	lo_send(m_host, m_controlPath, "if", Sampler_PORT_SUSTAIN, on ? 127.0 : 0.0);
+	lo_send(m_host, m_controlPath, "if", Sampler_PORT_SUSTAIN, on ? 1.0 : 0.0);
     }
 }
 
 void
 SamplerGUI::fileSelect()
 {
+    QString orig = m_sampleFile->text();
+    if (orig == NO_SAMPLE_TEXT) orig = ".";
+
     QString path = QFileDialog::getOpenFileName
-	(".", "Audio files (*.wav *.aiff)", this, "file select",
+	(orig, "Audio files (*.wav *.aiff)", this, "file select",
 	 "Select an audio sample file");
+
     if (path) {
 
 	SF_INFO info;
@@ -228,6 +242,14 @@ int
 configure_handler(const char *path, const char *types, lo_arg **argv,
 		  int argc, void *data, void *user_data)
 {
+    SamplerGUI *gui = static_cast<SamplerGUI *>(user_data);
+    const char *key = (const char *)&argv[0]->s;
+    const char *value = (const char *)&argv[1]->s;
+
+    if (!strcmp(key, "load")) {
+	gui->setSampleFile(value);
+    }
+
     return 0;
 }
 
@@ -282,7 +304,7 @@ control_handler(const char *path, const char *types, lo_arg **argv,
 	break;
 
     case Sampler_PORT_SUSTAIN:
-	gui->setSustain(value > 0.01 ? true : false);
+	gui->setSustain(value > 0.001 ? true : false);
 	break;
 
     default:
