@@ -26,18 +26,17 @@ Synth Interface, or DSSI (pronounced "dizzy").
 Because of the conservative nature of this proposal, the main
 requirements are:
 
-  (1) To support the basic facilities that users and developers
-  familiar with mainstream software on other platforms will expect to
-  find in a Linux alternative: the ability to take a synth plugin
-  with a cute GUI and to direct MIDI (from e.g. a sequencer track)
-  to it, automate its controls, and route the output appropriately.
-  Note that there is an emphasis on MIDI throughout this discussion.
+1/ To support the basic facilities that users and developers familiar
+with mainstream software on other platforms will expect to find in a
+Linux alternative: the ability to take a synth plugin with a cute GUI
+and to direct MIDI (from e.g. a sequencer track) to it, automate its
+controls, and route the output appropriately.  Note that there is an
+emphasis on MIDI throughout this discussion.
 
-  (2) To address certain specific limitations of other methods of
-  running MIDI soft synths on Linux.  These limitations are discussed
-  below.
+2/ To address certain specific limitations of other methods of running
+MIDI soft synths on Linux.  These limitations are discussed below.
 
-  (3) To take advantage of existing work as much as possible.
+3/ To take advantage of existing work as much as possible.
 
 
 Existing Techniques
@@ -105,10 +104,12 @@ those synths in the first place.
 
 The MusE sequencer has an API for hosting soft synths, known as
 libsynti.  It is probably the closest alternative to the present
-proposal, it addresses many of the same problems, and it is an
-attractively small API.  Unfortunately it is unlikely to be popular as
-a standard for Linux audio plugins, simply because it is in C++ and
-requires Qt for plugin GUIs.
+proposal, it addresses many of the same problems, it is working now,
+and it is an attractively small API.  Unfortunately it is unlikely to
+be popular as a standard for Linux audio plugins, simply because it is
+in C++ and requires Qt for plugin GUIs.  Most of the current candidate
+hosts for soft synths are already in C++, but it is not a popular
+choice for writing plugins.
 
 * VSTi
 
@@ -122,8 +123,8 @@ the fact that their source is usually not, so they can't be rebuilt
 for Linux except by their authors.
 
 
-The DSSI Proposal
------------------
+The DSSI Proposal In Brief
+--------------------------
 
 * Define a DSSI plugin as a wrapper for a LADSPA plugin, which is to
   be used for all control and audio data.  (Thus taking advantage of
@@ -137,6 +138,9 @@ The DSSI Proposal
   and enabling the host to query the various additional bits of
   non-MIDI non-audio information it needs.)
 
+The above two parts of the proposal are documented thoroughly in the
+dssi.h header file.
+
 * Make the plugin GUI a separate standalone program, that communicates
   with the host (_not_ directly with the plugin) via Open Sound Control
   messages.  (Thus ducking out of the GUI toolkit compatibility
@@ -144,21 +148,115 @@ The DSSI Proposal
   automatable by the host, and in principle permitting plugins to be
   controlled by other OSC clients as well.)
 
-Further details are documented liberally in the dssi.h header.
+This part of the proposal is documented below.
 
+
+DSSI Synth GUIs
+---------------
+
+A synth GUI is an executable program, not a part of the plugin or a
+separate shared object.  A host may elect to start or stop the GUI for
+a plugin at any time, starting and terminating the executable at will.
+
+1. In General
+
+The GUI and host communicate with one another using OSC, the OpenSound
+Control protocol.  See
+
+  http://www.cnmat.berkeley.edu/OpenSoundControl/
+
+OSC is a simple message-based transport-independent protocol intended
+for communications among sound devices.  No particular OSC
+implementation is mandated for DSSI, although the example code uses a
+UDP-based implementation by Steve Harris called liblo ("Lite OSC")
+which can be obtained from
+
+  http://www.plugin.org.uk/liblo/
+
+Note that liblo is distributed under a different licence from DSSI and
+so might not be a legal option for certain DSSI implementations.
+
+DSSI uses OSC in both directions between the host and GUI.  When a
+user changes a port value in the GUI, it sends an OSC request to the
+host, which informs the plugin of the change; when an automated port
+change occurs in the host, it sends an update to the GUI.  (The host
+does not send updates to the GUI for port changes that the GUI itself
+initiated; likewise the GUI must not send port changes back to the
+host that the host itself initiated.)
+
+Communications between the host and GUI are deliberately as limited as
+possible.  There is, for example, no way for a GUI to query the
+available port names, values, ranges etc for a plugin.  It's expected
+that the GUI will either share some code with the plugin so that it
+knows these things already, or will itself also load the plugin DLL
+and query it directly.
+
+2. Discovery and Startup
+
+The mechanism by which a host locates and invokes the GUI for a plugin
+is host-dependent.
+
+Our recommendation is this: for a plugin labelled PLUGIN found in a
+dll named PLUGINS.so in directory DIRECTORY, the host may look in the
+directory DIRECTORY/PLUGINS/ for executable files beginning with the
+string PLUGIN.  (If there are several, the expectation is that the
+suffix will somehow determine the host's preference -- for example,
+PLUGIN_qt, PLUGIN_gl -- a convention for this ought to be determined,
+but hasn't been yet.)
+
+The host then starts the chosen executable with a command line
+supplying the OSC URL that the GUI should use to communicate with the
+host, identifying the host and the path for the GUI's plugin method.
+The GUI then requests an update, passing its own OSC URL to the host;
+the host responds by sending the current values of all the ports, and
+startup is complete.
+
+*!!! -- host needs to send plugin so and label to GUI as well!
+
+3. Paths and Methods
+
+An OSC method call consists of a path -- identifying the method being
+called -- and a sequence of typed arguments. 
+
+The DSSI host is expected to associate a path with each plugin
+instance; this is the path made available to the GUI on startup.
+
+Setting Port Values
+
+The plugin path can be called directly by the GUI to set a port value.
+For example, the host may elect to associate the path
+"/dssi/myplugins/plugin.1" with instance 1 of the plugin labelled
+"plugin" from dll "myplugins.so".  Once it has made this path known to
+the GUI, the GUI can then call it with port number and value arguments
+to set a port.
+
+GUI Updates
+
+The GUI must request a complete update from the host on startup, and
+may do so again at any time.  To do so, it passes its own OSC URL to
+the host via the "/update" subpath of the plugin path.  For example,
+if the host has elected to associate "/dssi/myplugins/plugin.1" with
+the instance of the plugin that the GUI is operating, the GUI can call
+"/dssi/myplugins/plugin.1/update", passing its own URL as a single
+string argument.  The host then calls that URL once for each port,
+with int and float arguments for port number and value.
+
+*!!! -- configure() requests
+*!!! -- MIDI over OSC
+*!!! -- program changes
 
 "Project Plan"
 --------------
 
- 1. Think of an API.
+1/ Think of an API.
 
- 2. Test it to make sure it's not totally stupid.
+2/ Test it to make sure it's not totally stupid.
 
- Iterate for a bit between 1 and 2 until it's clear that total
- stupidity is no longer in the air.
+Iterate for a bit between 1 and 2 until it's clear that total
+stupidity is no longer in the air.
 
- 3. Take it to LAD and see how well it goes down.  If it looks as
- though a workable consensus based on this proposal can be reached,
- then try to reach it and get some implementations done.  Otherwise
- reframe or abandon.
+3/ Take it to LAD and see how well it goes down.  If it looks as
+though a workable consensus based on this proposal can be reached,
+then try to reach it and get some implementations done.  Otherwise
+reframe or abandon.
 
