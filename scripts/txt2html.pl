@@ -18,8 +18,9 @@ my $filename = $ARGV[0];
 if (!defined $filename) { $filename = "(stdin)"; }
 
 print '<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0//EN" "http://www.w3.org/TR/REC-html40/strict.dtd">';
-print "\n<html><head><title>$title</title></head><body>\n";
-print "<!-- Do not edit! Automatically generated from $filename by $0 -->\n";
+print "\n<html><head>\n";
+print '<meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">';
+print "\n<title>$title</title></head><body>\n<!-- Do not edit! Automatically generated from $filename by $0 -->\n";
 #print "<contents>\n"; # for automatic TOC generator
 
 my $hadtoc = 0;
@@ -105,12 +106,16 @@ sub write_para
     } elsif ($style eq "h3") {
         write_head 3, $p[0];
     } elsif ($style eq "uli" or $style eq "oli" or $style eq "cli") {
-	print "</li><P>" if ($laststyle eq $style);
+	print "<br/><br/></li>" if ($laststyle eq $style);
 	$p[0] =~ s/^\s+(?:\d+)?[^\w\s]\s+//;
 	print "<li>@p";
     } elsif ($style eq "cont") {
 	$style = $laststyle;
-	print "<p>@p";
+	if ($style eq "uli" or $style eq "oli" or $style eq "cli") {
+	  print "<br/><br/>@p";
+	} else {
+	  print "<p>@p";
+	}
     } elsif ($style eq "p") {
 	print "<p>@p</p>";
     } else {
