@@ -406,6 +406,43 @@ startGUI(const char *directory, const char *dllName, const char *label,
     free(subpath);
 }
 
+void
+query_programs()
+{
+    int i;
+
+    /* free old lot */
+    if (pluginPrograms) {
+	free((char *)pluginPrograms);
+	pluginPrograms = 0;
+	pluginProgramCount = 0;
+    }
+
+    pendingBankLSB = -1;
+    pendingBankMSB = -1;
+    pendingProgramChange = -1;
+
+    if (pluginDescriptor->get_program && pluginDescriptor->select_program) {
+
+	/* Count the plugins first */
+	for (i = 0; pluginDescriptor->get_program(pluginHandle, i); ++i);
+
+	if (i > 0) {
+	    pluginProgramCount = i;
+	    pluginPrograms = (DSSI_Program_Descriptor *)
+		malloc(i * sizeof(DSSI_Program_Descriptor));
+	    while (i > 0) {
+		--i;
+		pluginPrograms[i] = *pluginDescriptor->get_program(pluginHandle, i);
+		currentBank = pluginPrograms[0].Bank;
+		currentProgram = pluginPrograms[0].Program;
+	    }
+	    // select program at index 0
+	    pluginDescriptor->select_program(pluginHandle, currentBank, currentProgram);
+	    pluginProgramUpdated = 1;
+	}
+    }
+}
 
 int
 main(int argc, char **argv)
@@ -651,23 +688,7 @@ main(int argc, char **argv)
 
     /* Look up synth programs */
     
-    if (pluginDescriptor->get_program && pluginDescriptor->select_program) {
-	for (i = 0; pluginDescriptor->get_program(pluginHandle, i); ++i);
-	if (i > 0) {
-	    pluginProgramCount = i;
-	    pluginPrograms = (DSSI_Program_Descriptor *)
-		malloc(i * sizeof(DSSI_Program_Descriptor));
-	    while (i > 0) {
-		--i;
-		pluginPrograms[i] = *pluginDescriptor->get_program(pluginHandle, i);
-		currentBank = pluginPrograms[0].Bank;
-		currentProgram = pluginPrograms[0].Program;
-	    }
-	    // select program at index 0
-	    pluginDescriptor->select_program(pluginHandle, currentBank, currentProgram);
-	    pluginProgramUpdated = 1;
-	}
-    }
+    query_programs();
 
     /* Create ALSA MIDI port */
 
@@ -939,7 +960,28 @@ int osc_program_handler(const char *path, const char *types, lo_arg **argv, int 
 int osc_configure_handler(const char *path, const char *types, lo_arg **argv, int argc,
 			  void *data, void *user_data) 
 {
-    fprintf(stderr, "dssi_example_host: OSC configure handler not yet implemented\n");
+    const char *key = (const char *)&argv[0]->s;
+    const char *value = (const char *)&argv[1]->s;
+
+    /* This is the simplest legal implementation of configure in a
+       DSSI host.  The host has the option to remember the set of
+       (key,value) pairs associated with a particular instance, so
+       that if it wants to restore the "same" instance on another
+       occasion it can just call configure() on it for each of those
+       pairs and so restore state without any input from a GUI.  Any
+       real-world GUI host will probably want to do that.  This host
+       doesn't have any concept of restoring an instance from one run
+       to the next, so we don't bother remembering these at all. */
+    
+    if (pluginDescriptor->configure) {
+
+	pluginDescriptor->configure(pluginHandle, key, value);
+
+	/* configure invalidates bank and program information, so
+	   we should do this again now: */
+	query_programs();
+    }
+
     return 0;
 }
 

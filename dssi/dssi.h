@@ -108,7 +108,8 @@ typedef struct _DSSI_Descriptor {
      * This member is a function pointer that sends a piece of
      * configuration data to the plugin.  The key argument specifies
      * some aspect of the synth's configuration that is to be changed,
-     * and the value argument specifies a new value for it.
+     * and the value argument specifies a new value for it.  A plugin
+     * with no use for this function may set this pointer to NULL.
      *
      * This call is intended to set some session-scoped aspect of a
      * plugin's behaviour, for example to tell the plugin to load
