@@ -27,6 +27,9 @@
 #define D3H_MAX_CHANNELS   16  /* MIDI limit */
 #define D3H_MAX_INSTANCES  (D3H_MAX_CHANNELS)
 
+/* character used to seperate DSO names from plugin labels on command line */
+#define LABEL_SEP ':'
+
 typedef struct _d3h_dll_t d3h_dll_t;
 
 struct _d3h_dll_t {

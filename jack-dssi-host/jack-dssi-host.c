@@ -44,6 +44,7 @@
 #include <signal.h>
 #include <dirent.h>
 #include <time.h>
+#include <libgen.h>
 
 #include <lo/lo.h>
 
@@ -85,6 +86,7 @@ lo_server_thread serverThread;
 static sigset_t _signals;
 
 int exiting = 0;
+static int verbose = 0;
 
 #define EVENT_BUFFER_SIZE 1024
 static snd_seq_event_t midiEventBuffer[EVENT_BUFFER_SIZE]; /* ring buffer */
@@ -414,6 +416,21 @@ load(const char *dllName, void **dll) /* returns directory where dll found */
     char *path, *element, *message;
     void *handle = 0;
 
+    /* If the dllName is an absolute path */
+    if (*dllName == '/') {
+	if ((handle = dlopen(dllName, RTLD_NOW))) {  /* real-time programs should not use RTLD_LAZY */
+	    fprintf(stderr, "found\n");
+	    *dll = handle;
+            path = strdup(dllName);
+
+	    return dirname(path);
+	} else {
+	    fprintf(stderr, "Cannot find DSSI plugin at '%s'\n", dllName);
+
+	    return NULL;
+	}
+    }
+
     if (!dssiPath) {
 	if (!defaultDssiPath) {
 	    const char *home = getenv("HOME");
@@ -496,8 +513,12 @@ startGUI(const char *directory, const char *dllName, const char *label,
 	dllBase[strlen(dllBase) - 3] = '\0';
     }
 
-    subpath = (char *)malloc(strlen(directory) + strlen(dllBase) + 2);
-    sprintf(subpath, "%s/%s", directory, dllBase);
+    if (*dllBase == '/') {
+	subpath = strdup(dllBase);
+    } else {
+	subpath = (char *)malloc(strlen(directory) + strlen(dllBase) + 2);
+	sprintf(subpath, "%s/%s", directory, dllBase);
+    }
 
     for (fuzzy = 0; fuzzy <= 1; ++fuzzy) {
 
@@ -670,8 +691,9 @@ main(int argc, char **argv)
     /* Parse args and report usage */
 
     if (argc < 2) {
-	fprintf(stderr, "\nUsage: %s [-<i>] <libname>[/<label>] [...]\n", argv[0]);
-	fprintf(stderr, "\n  <i>       Number of instances of each plugin to run (max %d total, default 1)\n", D3H_MAX_INSTANCES);
+	fprintf(stderr, "\nUsage: %s [-v] [-<i>] <libname>[%c<label>] [...]\n", argv[0], LABEL_SEP);
+	fprintf(stderr, "\n  -v        Verbose mode\n");
+	fprintf(stderr, "  <i>       Number of instances of each plugin to run (max %d total, default 1)\n", D3H_MAX_INSTANCES);
 	fprintf(stderr, "  <libname> DSSI plugin library .so to load (searched for in $DSSI_PATH)\n");
 	fprintf(stderr, "  <label>   Label of plugin to load from library\n");
 	fprintf(stderr, "  [...]     Optionally more instance counts, plugins and labels\n");
@@ -685,6 +707,11 @@ main(int argc, char **argv)
 
     reps = 1;
     for (i = 1; i < argc; i++) {
+
+	if (!strcmp(argv[i], "-v")) {
+	    verbose = 1;
+	    continue;
+	}
 
         if (instance_count >= D3H_MAX_INSTANCES) {
             fprintf(stderr, "jack-dssi-host: too many plugin instances specified (max is %d)\n", D3H_MAX_INSTANCES);
@@ -702,7 +729,7 @@ main(int argc, char **argv)
         }
 
         /* parse dll name, plus a label if supplied */
-        tmp = strchr(argv[i], '/');
+        tmp = strchr(argv[i], LABEL_SEP);
         if (tmp) {
             dllName = calloc(1, tmp - argv[i] + 1);
             strncpy(dllName, argv[i], tmp - argv[i]);
@@ -1256,8 +1283,11 @@ osc_midi_handler(d3h_instance_t *instance, lo_arg **argv)
     long count;
     snd_seq_event_t *ev = &alsaEncodeBuffer[0];
 
-    printf("jack-dssi-host: OSC: got midi request for %s (%02x %02x %02x %02x)\n",
-           instance->friendly_name, argv[0]->m[0], argv[0]->m[1], argv[0]->m[2], argv[0]->m[3]);
+    if (verbose) {
+	printf("jack-dssi-host: OSC: got midi request for %s "
+	       "(%02x %02x %02x %02x)\n", instance->friendly_name,
+	       argv[0]->m[0], argv[0]->m[1], argv[0]->m[2], argv[0]->m[3]);
+    }
 
     if (!alsaCoder) {
         if (snd_midi_event_new(10, &alsaCoder)) {
@@ -1328,8 +1358,10 @@ osc_control_handler(d3h_instance_t *instance, lo_arg **argv)
 	return 0;
     }
     pluginControlIns[instance->pluginPortControlInNumbers[port]] = value;
-    printf("jack-dssi-host: OSC: %s port %d = %f\n", instance->friendly_name,
-           port, value);
+    if (verbose) {
+	printf("jack-dssi-host: OSC: %s port %d = %f\n",
+	    instance->friendly_name, port, value);
+    }
     
     return 0;
 }
@@ -1408,7 +1440,9 @@ osc_update_handler(d3h_instance_t *instance, lo_arg **argv)
     unsigned int i;
     char *host, *port;
 
-    printf("jack-dssi-host: OSC: got update request from <%s>\n", url);
+    if (verbose) {
+	printf("jack-dssi-host: OSC: got update request from <%s>\n", url);
+    }
 
     if (instance->uiTarget) lo_address_free(instance->uiTarget);
     host = lo_url_get_hostname(url);
