@@ -366,13 +366,17 @@ load(const char *dllName, void **dll) /* returns directory where dll found */
 	char *filePath = (char *)malloc(strlen(element) + strlen(dllName) + 2);
 	sprintf(filePath, "%s/%s", element, dllName);
 
+	(void)dlerror(); // clear error state
+
 	if ((handle = dlopen(filePath, RTLD_LAZY))) {
 	    fprintf(stderr, "found\n");
 	    *dll = handle;
 	    return strdup(element);
 	}
-
-	fprintf(stderr, "nope\n");
+	
+	const char *err = dlerror();
+	if (err) fprintf(stderr, "nope (%s)\n", err);
+	else fprintf(stderr, "nope\n");
     }
     
     return 0;
@@ -430,6 +434,7 @@ startGUI(const char *directory, const char *dllName, const char *label,
 
 	    free(filename);
 	    free(subpath);
+	    closedir(subdir);
 	    return;
 	}
 
@@ -439,6 +444,7 @@ startGUI(const char *directory, const char *dllName, const char *label,
     fprintf(stderr, "dssi_example_host: no GUI found for plugin \"%s\" in \"%s/\"\n",
 	    label, subpath);
     free(subpath);
+    closedir(subdir);
 }
 
 void
@@ -559,6 +565,16 @@ main(int argc, char **argv)
     if (!pluginDescriptor) {
 	fprintf(stderr, "dssi_example_host: Error: Plugin label %s not found in DLL %s\n",
 		label ? label : "(none)", dllName);
+	fprintf(stderr, "dssi_example_host: Available label(s) are:\n");
+	for (i = 0; ; ++i) {
+	    pluginDescriptor = descfn(i);
+	    if (!pluginDescriptor) {
+		if (i == 0) fprintf(stderr, "(none)\n");
+		break;
+	    }
+	    fprintf(stderr, "dssi_example_host: %d: %s\n", i,
+		    pluginDescriptor->LADSPA_Plugin->Label);
+	}
 	return 1;
     }
 
