@@ -37,6 +37,7 @@
 #include <stdlib.h>
 #include <dlfcn.h>
 #include <unistd.h>
+#include <math.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/time.h>
@@ -61,6 +62,8 @@ static d3h_dll_t     *dlls;
 
 static d3h_plugin_t  *plugins;
 static int            plugin_count = 0;
+
+static float sample_rate;
 
 static d3h_instance_t instances[D3H_MAX_INSTANCES];
 static int            instance_count = 0;
@@ -169,9 +172,13 @@ setControl(d3h_instance_t *instance, long controlIn, snd_seq_event_t *event)
 
     LADSPA_PortRangeHintDescriptor d = p->PortRangeHints[port].HintDescriptor;
 
-    LADSPA_Data lb = p->PortRangeHints[port].LowerBound;
+    LADSPA_Data lb = p->PortRangeHints[port].LowerBound *
+	(LADSPA_IS_HINT_SAMPLE_RATE(p->PortRangeHints[port].HintDescriptor) ?
+	 sample_rate : 1.0f);
 
-    LADSPA_Data ub = p->PortRangeHints[port].UpperBound;
+    LADSPA_Data ub = p->PortRangeHints[port].UpperBound *
+	(LADSPA_IS_HINT_SAMPLE_RATE(p->PortRangeHints[port].HintDescriptor) ?
+	 sample_rate : 1.0f);
 
     float value = (float)event->data.control.value;
 
@@ -188,8 +195,14 @@ setControl(d3h_instance_t *instance, long controlIn, snd_seq_event_t *event)
 	    value = lb + value;
 	} else {
 	    /* bounded both ends.  more interesting. */
-	    /* XXX !!! todo: fill in logarithmic, sample rate &c */
-	    value = lb + ((ub - lb) * value / 127.0f);
+	    if (!LADSPA_IS_HINT_LOGARITHMIC(d)) {
+		const float llb = logf(lb);
+		const float lub = logf(ub);
+
+		value = expf(llb + ((lub - llb) * value / 127.0f));
+	    } else {
+		value = lb + ((ub - lb) * value / 127.0f);
+	    }
 	}
     }
     
@@ -209,10 +222,8 @@ audio_callback(jack_nframes_t nframes, void *arg)
     d3h_instance_t *instance;
     struct timeval tv, evtv, diff;
     long framediff;
-    jack_nframes_t rate;
 
     gettimeofday(&tv, NULL);
-    rate = jack_get_sample_rate(jackClient);
 
     /* Not especially pretty or efficient */
 
@@ -270,9 +281,9 @@ audio_callback(jack_nframes_t nframes, void *arg)
 	}
 
 	framediff =
-	    diff.tv_sec * rate +
-	    ((diff.tv_usec / 1000) * rate) / 1000 +
-	    ((diff.tv_usec - 1000 * (diff.tv_usec / 1000)) * rate) / 1000000;
+	    diff.tv_sec * sample_rate +
+	    ((diff.tv_usec / 1000) * sample_rate) / 1000 +
+	    ((diff.tv_usec - 1000 * (diff.tv_usec / 1000)) * sample_rate) / 1000000;
 
 	if (framediff >= nframes) framediff = nframes - 1;
 	else if (framediff < 0) framediff = 0;
@@ -971,6 +982,8 @@ main(int argc, char **argv)
 	}
     }
 
+    sample_rate = jack_get_sample_rate(jackClient);
+
     inputPorts = (jack_port_t **)malloc(insTotal * sizeof(jack_port_t *));
     pluginInputBuffers = (float **)malloc(insTotal * sizeof(float *));
     pluginControlIns = (float *)calloc(controlInsTotal, sizeof(float));
@@ -1057,7 +1070,7 @@ main(int argc, char **argv)
     for (i = 0; i < instance_count; i++) {
         plugin = instances[i].plugin;
         instanceHandles[i] = plugin->descriptor->LADSPA_Plugin->instantiate
-            (plugin->descriptor->LADSPA_Plugin, jack_get_sample_rate(jackClient));
+            (plugin->descriptor->LADSPA_Plugin, sample_rate);
         if (!instanceHandles[i]) {
             fprintf(stderr, "\n%s: Error: Failed to instantiate instance %d!, plugin \"%s\"\n",
                     myName, i, plugin->label);
@@ -1307,12 +1320,11 @@ main(int argc, char **argv)
 
 LADSPA_Data get_port_default(const LADSPA_Descriptor *plugin, int port)
 {
-    float fs = jack_get_sample_rate(jackClient);
     LADSPA_PortRangeHint hint = plugin->PortRangeHints[port];
     float lower = hint.LowerBound *
-	(LADSPA_IS_HINT_SAMPLE_RATE(hint.HintDescriptor) ? fs : 1.0f);
+	(LADSPA_IS_HINT_SAMPLE_RATE(hint.HintDescriptor) ? sample_rate : 1.0f);
     float upper = hint.UpperBound *
-	(LADSPA_IS_HINT_SAMPLE_RATE(hint.HintDescriptor) ? fs : 1.0f);
+	(LADSPA_IS_HINT_SAMPLE_RATE(hint.HintDescriptor) ? sample_rate : 1.0f);
 
     if (!LADSPA_IS_HINT_HAS_DEFAULT(hint.HintDescriptor)) {
 	if (!LADSPA_IS_HINT_BOUNDED_BELOW(hint.HintDescriptor) ||

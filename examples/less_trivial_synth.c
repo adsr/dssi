@@ -476,7 +476,7 @@ void _init()
 	port_descriptors[LTS_RELEASE] = port_descriptors[LTS_ATTACK];
 	port_names[LTS_RELEASE] = "Release time (s)";
 	port_range_hints[LTS_RELEASE].HintDescriptor =
-			LADSPA_HINT_DEFAULT_MIDDLE |
+			LADSPA_HINT_DEFAULT_MIDDLE | LADSPA_HINT_LOGARITHMIC |
 			LADSPA_HINT_BOUNDED_BELOW | LADSPA_HINT_BOUNDED_ABOVE;
 	port_range_hints[LTS_RELEASE].LowerBound =
 			port_range_hints[LTS_ATTACK].LowerBound;
