@@ -1,0 +1,49 @@
+
+This is the Disposable Soft Synth Interface specification & example
+code repository.
+
+You'll find here:
+
+  doc/RFC.txt -- proposed DSSI specification
+
+  dssi/dssi.h -- DSSI header file (also part of the specification)
+
+  examples/dssi_osc_send.c
+  examples/dssi_osc_update.c -- simple DSSI OSC test programs
+
+  examples/dssi_example_host.c -- a basic, public-domain example host
+  implementation
+
+  examples/trivial_synth.c -- a quite useless but fairly clear
+  illustrative synth plugin
+
+  examples/less_trivial_synth.c -- a synth that actually does some
+  basic synthesis
+
+  examples/less_trivial_synth_qt_gui.cpp -- a very simple Qt GUI
+  for the above
+
+To build the example code you will need:
+
+  ALSA 0.9/1.0.x
+  JACK
+  liblo-0.5 or above: http://www.plugin.org.uk/liblo/
+  pkgconfig with PKG_CONFIG_PATH set appropriately to pick up liblo
+  Qt 3 with QTDIR set appropriately
+
+So long as PKG_CONFIG_PATH and QTDIR are set appropriately, a "make"
+in the examples directory should build everything.
+
+To test: make sure JACK is running, cd to examples and run
+
+  $ export DSSI_PATH=`pwd`
+  $ ./dssi_example_host less_trivial_synth.so
+
+A synth GUI should pop up, with an ALSA sequencer input and JACK
+output.  What has actually happened (if it worked) is that the host
+process has been started, has loaded the first synth plugin (labelled
+LTS) found in the given .so file, has located the GUI executable that
+the make procedure installed into examples/less_trivial_synth/LTS_qt,
+instantiated the plugin, started the GUI and is now managing the MIDI
+input from ALSA, control changes from the GUI and audio out to JACK.
+

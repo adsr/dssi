@@ -1,0 +1,17 @@
+
+Stuff remaining to do for the proof of concept:
+
+In the example host:
+ * Program change support
+ * MIDI program/bank changes mapped to DSSI program changes
+ * support for log/samplerate ports
+ * GUI discovery [DONE]
+ * generic GUI support? nah
+ * configure() support, MIDI-over-OSC
+ * maybe NRPNs?
+ 
+In the less trivial synth GUI:
+ * configure() / program changes?
+ * some sort of MIDI event in / test button?
+ * what else?
+
