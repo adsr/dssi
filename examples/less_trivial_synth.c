@@ -27,7 +27,7 @@
 #define LTS_DECAY   3
 #define LTS_SUSTAIN 4
 #define LTS_RELEASE 5
-#define LTS_COUNT   6 /* must be 1 + higest value above */
+#define LTS_COUNT   6 /* must be 1 + highest value above */
 
 #define POLYPHONY   24
 #define MIDI_NOTES  128

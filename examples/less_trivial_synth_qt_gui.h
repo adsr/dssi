@@ -18,12 +18,14 @@
 #include <qlabel.h>
 #include <qlayout.h>
 
+#include <lo.h>
+
 class SynthGUI : public QFrame
 {
     Q_OBJECT
 
 public:
-    SynthGUI(QWidget *w = 0);
+    SynthGUI(char *hostUrl, QWidget *w = 0);
     virtual ~SynthGUI();
 
 public slots:
@@ -52,6 +54,8 @@ protected:
     QLabel *m_decayLabel;
     QLabel *m_sustainLabel;
     QLabel *m_releaseLabel;
+
+    lo_target m_host;
 
     bool m_suppressHostUpdate;
 };

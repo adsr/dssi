@@ -11,13 +11,29 @@
 */
 
 #include "less_trivial_synth_qt_gui.h"
+#include "osc_url.h"
 
 #include <qapplication.h>
+#include <iostream>
 
-SynthGUI::SynthGUI(QWidget *w) :
+#define LTS_PORT_FREQ    1
+#define LTS_PORT_ATTACK  2
+#define LTS_PORT_DECAY   3
+#define LTS_PORT_SUSTAIN 4
+#define LTS_PORT_RELEASE 5
+
+#define TEST_PATH "/dssi/test.1"
+
+SynthGUI::SynthGUI(char *url, QWidget *w) :
     QFrame(w),
     m_suppressHostUpdate(true)
 {
+    char *host = osc_url_get_hostname(url);
+    char *port = osc_url_get_port(url);
+//    char *path = osc_url_get_path(url);
+
+    m_host = lo_target_new(host, port);
+
     QGridLayout *layout = new QGridLayout(this, 3, 5, 5, 5);
     
     m_tuning  = new QDial(100, 600, 10, 400, this); // (Hz - 400) * 10
@@ -119,7 +135,9 @@ SynthGUI::tuningChanged(int value)
     m_tuningLabel->setText(QString("%1 Hz").arg(hz));
 
     if (!m_suppressHostUpdate) {
-	//!!! send hz to host
+	std::cerr << "Sending to host: " << TEST_PATH
+		  << " port " << LTS_PORT_FREQ << " to " << hz << std::endl;
+	lo_send(m_host, TEST_PATH, "if", LTS_PORT_FREQ, hz);
     }
 }
 
@@ -130,7 +148,7 @@ SynthGUI::attackChanged(int value)
     m_attackLabel->setText(QString("%1 sec").arg(sec));
 
     if (!m_suppressHostUpdate) {
-	//!!! send sec to host
+	lo_send(m_host, TEST_PATH, "if", LTS_PORT_ATTACK, sec);
     }
 }
 
@@ -141,7 +159,7 @@ SynthGUI::decayChanged(int value)
     m_decayLabel->setText(QString("%1 sec").arg(sec));
 
     if (!m_suppressHostUpdate) {
-	//!!! send sec to host
+	lo_send(m_host, TEST_PATH, "if", LTS_PORT_DECAY, sec);
     }
 }
 
@@ -151,7 +169,7 @@ SynthGUI::sustainChanged(int value)
     m_sustainLabel->setText(QString("%1 %").arg(value));
 
     if (!m_suppressHostUpdate) {
-	//!!! send value (percent) to host
+	lo_send(m_host, TEST_PATH, "if", LTS_PORT_SUSTAIN, float(value));
     }
 }
 
@@ -162,12 +180,13 @@ SynthGUI::releaseChanged(int value)
     m_releaseLabel->setText(QString("%1 sec").arg(sec));
 
     if (!m_suppressHostUpdate) {
-	//!!! send sec to host
+	lo_send(m_host, TEST_PATH, "if", LTS_PORT_RELEASE, sec);
     }
 }
 
 SynthGUI::~SynthGUI()
 {
+    lo_target_free(m_host);
 }
 
 int
@@ -175,7 +194,15 @@ main(int argc, char **argv)
 {
     QApplication application(argc, argv);
 
-    SynthGUI gui;
+    if (application.argc() != 2) {
+	std::cerr << "usage: "
+		  << application.argv()[0] 
+		  << " <osc url>"
+		  << std::endl;
+	return 2;
+    }
+
+    SynthGUI gui(application.argv()[1]);
     application.setMainWidget(&gui);
     gui.show();
 

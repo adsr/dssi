@@ -13,7 +13,7 @@ CFLAGS = -Wall -g3 -O3 -I../dssi $(shell pkg-config liblo --cflags)
 CXXFLAGS = $(CFLAGS) -I$(QTDIR)/include
 
 LDLIBS = -ljack -lasound -lpthread $(shell pkg-config liblo --libs)
-CXXLDLIBS = -L$(QTDIR)/lib -lqt-mt
+QTGUI_LDLIBS = -L$(QTDIR)/lib -lqt-mt $(shell pkg-config liblo --libs)
 
 dssi_example_host:	dssi_example_host.o message_buffer.o osc_url.o
 
@@ -28,8 +28,8 @@ less_trivial_synth_qt_gui.o:	less_trivial_synth_qt_gui.h
 less_trivial_synth_qt_gui.moc.cpp:	less_trivial_synth_qt_gui.h
 	moc $< > $@
 
-less_trivial_synth_qt_gui: less_trivial_synth_qt_gui.o less_trivial_synth_qt_gui.moc.o
-	$(CXX) -o $@ $^ $(LDLIBS) $(CXXLDLIBS)
+less_trivial_synth_qt_gui: less_trivial_synth_qt_gui.o less_trivial_synth_qt_gui.moc.o osc_url.o
+	$(CXX) -o $@ $^ $(QTGUI_LDLIBS)
 
 %.so: %.o ../dssi/dssi.h message_buffer.o
 	gcc -nostartfiles -shared -lc -lm -o $*.so $*.o message_buffer.o
