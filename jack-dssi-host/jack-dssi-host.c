@@ -1619,11 +1619,8 @@ osc_update_handler(d3h_instance_t *instance, lo_arg **argv)
 	int port = pluginControlInPortNumbers[in];
 	lo_send(instance->uiTarget, instance->ui_osc_control_path, "if", port,
                 pluginControlIns[in]);
-    }
-
-    if (!instance->ui_initial_show_sent) {
-	lo_send(instance->uiTarget, instance->ui_osc_show_path, "");
-	instance->ui_initial_show_sent = 1;
+	/* Avoid overloading the GUI if there are lots and lots of ports */
+	if ((i+1) % 50 == 0) usleep(300000);
     }
 
     /* At this point a more substantial host might also call
@@ -1636,6 +1633,11 @@ osc_update_handler(d3h_instance_t *instance, lo_arg **argv)
     if (projectDirectory) {
 	lo_send(instance->uiTarget, instance->ui_osc_configure_path, "ss",
 		DSSI_PROJECT_DIRECTORY_KEY, projectDirectory);
+    }
+
+    if (!instance->ui_initial_show_sent) {
+	lo_send(instance->uiTarget, instance->ui_osc_show_path, "");
+	instance->ui_initial_show_sent = 1;
     }
 
     return 0;
