@@ -187,11 +187,11 @@ section below.
 DSSI Multi-thread / Multi-process Considerations
 ------------------------------------------------
 
-Most DSSI hosts will be multi-threaded applications, and an ideal DSSI
-host would be able to take advantage of multiple processors.
-Developers of DSSI hosts and plugins must therefore implement
-appropriate interprocess synchronization measures, which should be as
-minimal and efficient as possible while allowing safe multi-threaded
+Most DSSI hosts will be multi-threaded applications, and an ideal
+DSSI host would be able to take advantage of multiple processors.
+Developers of DSSI hosts and plugins must implement appropriate
+interprocess synchronization measures, which should be as minimal
+and efficient as possible while allowing safe multi-threaded
 operation.  Therefore, a clear delineation of responsibility in this
 regard between host and plugin is needed.
 
@@ -200,13 +200,13 @@ other APIs such as VST, but it is often assumed or deduced from
 practical examples rather than documented.)
 
 To this end, each of the DSSI or LADSPA API functions is assigned to
-one of three 'classes, and restrictions are placed on when a host may
-make simultaneous calls to these functions, based on to which classes
-of functions are in use.
+one of three 'classes', and restrictions are placed on when a host
+may make simultaneous calls to these functions, based on which
+classes of functions are in use.
 
 The three classes of function are:
 
-1. Initialization class:
+1. Instantiation class:
 
    This class contains functions that instantiate and set up plugins
    before they are run, and that clean up and disinstantiate when they
@@ -221,8 +221,9 @@ The three classes of function are:
 2. Control class:
 
    This class contains functions that control the behaviour of an
-   active or running plugin, yet (for real-time plugins) are not
-   expected to run in real time. They are:
+   active or running plugin, or return information about a plugin's
+   state, yet (for real-time plugins) are not expected to run in
+   real time. They are:
 
         configure()
         get_midi_controller_for_port()
@@ -230,8 +231,7 @@ The three classes of function are:
 
 3. Audio class:
 
-   This class contains functions that typically would be run from the
-   'audio' or 'real-time' thread(s) of a DSSI system.  They are:
+   The remaining functions belong to the audio class:
 
         run()
         run_adding()
@@ -239,8 +239,16 @@ The three classes of function are:
         run_synth_adding()
         run_multiple_synths()
         run_multiple_synths_adding()
-        set_run_adding_gain()
         select_program()
+        set_run_adding_gain()
+
+It is not the intent of these class divisions to associate the
+functions with particular host threads -- that is, while some hosts
+may call control class functions from a 'control' thread, and audio
+class functions from an 'audio' thread, nothing in these rules
+requires that.  As long as the restrictions on simultaneous
+execution of the functions are met, host applications may be
+structured in any way that makes sense.
 
 
 Rules for Hosts:
@@ -256,20 +264,28 @@ group are:
    will not be called for any instance while any of the run*()
    functions are executing,
 
-2. While a function of the initialization class is being run, the
+2. While a function of the instantiation class is being run, the
    host may not call any functions of the other two classes, and
-   vice versa.  Thus, a plugin need not guard against simultaneous
-   calls to e.g. configure() or run_synth() while in connect_port().
+   vice versa. Thus, a plugin is assured that e.g. connect_port() or
+   deactivate() will not be called for any instance in the instance
+   group until all previous control and audio function invocations
+   for the instance group have finished.
 
 These restrictions apply to each 'instance group' within a running
 DSSI system.  When a host is using run_multiple_synths() with a
 particular plugin, then the instance group includes all active
-instances of that plugin (i.e. instances with the same label and .so
-file, not all instances drawn from the same .so).  When a plugin does
-not support run_multiple_synths(), or when it supports both
-run_synth() and run_multiple_synths() but the host chooses not to use
-run_multiple_synths(), then each instance of the plugin is its own
+instances of that same plugin.  When a plugin does not support
+run_multiple_synths() (or when it supplies both run_synth() and
+run_multiple_synths() but the host chooses not to use
+run_multiple_synths()), then each instance of the plugin is its own
 instance group.
+
+Because a single DSSI library (typically a dynamically-loaded *.so
+file) may contain several different plugins, it is important to
+clarify that 'instances of the same plugin' refers to all instances
+of one particular plugin within the library (that is, all instances
+with the same label and *.so file). It does NOT refer to all
+instances drawn from the same *.so file.
 
 
 Rules for Plugins:
@@ -280,11 +296,20 @@ group), it is the responsibility of the plugin to ensure that its
 internal data structures are appropriately protected (with
 e.g. mutexes or multi-thread-safe queues).
 
-Also, all of the audio class functions provided by a plugin should
-obey restrictions similar to those placed on 'hard real-time' LADSPA
-plugins: no malloc() or free(), no libraries other than libc or libm,
-and no blocking I/O. (Unless, of course, the plugin is not intended
-for real-time operation.)
+In practice it may be quite common for one host thread to call a
+control class function while another thread continues to repeatedly
+call a run*() function.  Where possible, a plugin should continue
+synthesis in the run*() function while the control class function
+executes, but in cases where resource contention cannot be overcome,
+it is permissible -- perhaps even expected -- that the run*()
+function stop generating sound and return only silence until the
+control function completes.
+
+Finally, all of the audio context functions provided by a plugin
+must obey restrictions similar to those placed on 'hard real-time'
+LADSPA plugins: no malloc() or free(), no libraries other than libc
+or libm, and no blocking I/O. (Unless, of course, the plugin is not
+intended for real-time operation.)
 
 
 DSSI Synth UIs

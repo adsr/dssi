@@ -304,6 +304,16 @@ typedef struct _DSSI_Descriptor {
      * EventCounts points to an array containing each instantiation's
      * respective event count.
      *
+     * A host using this function must guarantee that ALL active
+     * instances of the plugin are represented in each call to the
+     * function -- that is, a host may not call run_multiple_synths()
+     * for some instances of a given plugin and then call run_synth()
+     * as well for others.  'All .. instances of the plugin' means
+     * every instance sharing the same LADSPA label and shared object
+     * (*.so) file (rather than every instance sharing the same *.so).
+     * 'Active' means any instance for which activate() has been called
+     * but deactivate() has not.
+     *
      * A plugin must provide either this function, run_synths() (see
      * above), or both.  A plugin that does not provide this function
      * must set this member to NULL.  Plugin authors implementing
@@ -333,6 +343,26 @@ typedef struct _DSSI_Descriptor {
                                        snd_seq_event_t **Events,
                                        unsigned long    *EventCounts);
 } DSSI_Descriptor;
+
+/**
+ * DSSI supports a plugin discovery method similar to that of LADSPA:
+ *
+ * - DSSI hosts may wish to locate DSSI plugin shared object files by
+ *    searching the paths contained in the DSSI_PATH and LADSPA_PATH
+ *    environment variables, if they are present.  Both are expected
+ *    to be colon-separated lists of directories to be searched (in
+ *    order), and DSSI_PATH should be searched first if both variables
+ *    are set.
+ *
+ * - Each shared object file containing DSSI plugins must include a
+ *   function dssi_descriptor(), with the following function prototype
+ *   and C-style linkage.  Hosts may enumerate the plugin types
+ *   available in the shared object file by repeatedly calling
+ *   this function with successive Index values (beginning from 0),
+ *   until a return value of NULL indicates no more plugin types are
+ *   available.  Each non-NULL return is the DSSI_Descriptor
+ *   of a distinct plugin type.
+ */
 
 const DSSI_Descriptor *dssi_descriptor(unsigned long Index);
   
