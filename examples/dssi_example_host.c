@@ -1059,11 +1059,6 @@ main(int argc, char **argv)
 
     while (i < instance_count) {
         if (instances[i].plugin->descriptor->LADSPA_Plugin &&
-	    instances[i].plugin->descriptor->LADSPA_Plugin->deactivate) {
-            instances[i].plugin->descriptor->LADSPA_Plugin->deactivate
-		(instanceHandles + i);
-	}
-        if (instances[i].plugin->descriptor->LADSPA_Plugin &&
 	    instances[i].plugin->descriptor->LADSPA_Plugin->cleanup) {
             instances[i].plugin->descriptor->LADSPA_Plugin->cleanup
 		(instanceHandles + i);
