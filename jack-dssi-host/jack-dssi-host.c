@@ -1522,6 +1522,13 @@ osc_configure_handler(d3h_instance_t *instance, lo_arg **argv)
 		free(message);
 	    }
 
+	    // also call back on UIs for plugins other than the one
+	    // that requested this:
+	    if (n != instance->number && instances[n].uiTarget) {
+		lo_send(instances[n].uiTarget,
+			instances[n].ui_osc_configure_path, "ss", key, value);
+	    }
+		
 	    /* configure invalidates bank and program information, so
 	       we should do this again now: */
 	    query_programs(&instances[n]);

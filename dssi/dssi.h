@@ -159,8 +159,8 @@ typedef struct _DSSI_Descriptor {
      * group, as well as their UIs.  Note that if any instance
      * returns non-NULL from configure to indicate error, the host
      * may stop there (and the set of plugins on which configure has
-     * been called will depend on the host).  See also the configure
-     * OSC call documentation in RFC.txt.
+     * been called will thus depend on the host implementation).
+     * See also the configure OSC call documentation in RFC.txt.
      */
     char *(*configure)(LADSPA_Handle Instance,
 		       const char *Key,
