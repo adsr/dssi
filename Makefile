@@ -16,5 +16,7 @@ distclean:
 
 install: all
 	mkdir -p $(PREFIX)/include
+	mkdir -p $(PREFIX)/lib/pkgconfig
 	cp dssi/dssi.h $(PREFIX)/include/
+	cp dssi.pc $(PREFIX)/lib/pkgconfig/
 	(cd examples && make install)
