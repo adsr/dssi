@@ -1,4 +1,4 @@
-/* -*- c-basic-offset: 4 -*- */
+/* -*- c-basic-offset: 4 -*-  vi:set ts=8 sts=4 sw=4: */
 
 /* dssi_example_host.c
 
@@ -357,7 +357,7 @@ main(int argc, char **argv)
     ins = outs = controlIns = controlOuts = 0;
     
     for (i = 0; i < MIDI_CONTROLLER_COUNT; ++i) {
-	controllerMap[i] = -1;
+	controllerMap[i] = DSSI_NONE;
     }
 
     for (i = 0; i < pluginDescriptor->LADSPA_Plugin->PortCount; ++i) {
@@ -391,8 +391,8 @@ main(int argc, char **argv)
 		    } else if (controller == 32) {
 			fprintf(stderr,
 				"Buggy plugin: wants mapping for bank LSB\n");
-		    } else if (controller > 0) {
-			controllerMap[controller] = controlIns;
+		    } else if (DSSI_IS_CC(controller)) {
+			controllerMap[controller] = DSSI_CC_NUMBER(controller);
 		    }
 		}
 
