@@ -320,8 +320,6 @@ char *samplerLoad(Sampler *plugin_data, const char *path)
 
     sf_close(file);
 
-    if (tmpFrames) free(tmpFrames);
-
     printf("loaded %s (%ld samples merged from %ld channels resampled from %ld frames at %ld Hz)\n", path, (long)samples, (long)info.channels, (long)info.frames, (long)info.samplerate);
 
     return NULL;
