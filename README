@@ -26,6 +26,12 @@ You'll find here:
   examples/less_trivial_synth_qt_gui.cpp -- a very simple Qt GUI
   for the above
 
+  examples/trivial_sampler.c -- a simple one-sample polyphonic
+  mono sampler (that doesn't do proper pitch scaling)
+
+  examples/trivial_sampler_qt_gui.cpp -- a very simple Qt GUI for
+  the above
+
   fluidsynth-dssi/ -- an example DSSI implementation of FluidSynth,
   with a GTK+ GUI
 
@@ -39,6 +45,8 @@ To build the example code you will need:
   JACK
   LADSPA
   liblo-0.9 or above: http://www.plugin.org.uk/liblo/
+  libsndfile: http://www.mega-nerd.com/libsndfile/
+  libsamplerate: http://www.mega-nerd.com/SRC/
   pkgconfig with PKG_CONFIG_PATH set appropriately to pick up liblo
 
 To build the less_trivial_synth Qt GUI, you will need:

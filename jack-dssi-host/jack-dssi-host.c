@@ -909,7 +909,12 @@ main(int argc, char **argv)
 
     /* Create buffers and JACK client and ports */
 
-    if ((jackClient = jack_client_new("jack-dssi-host")) == 0) {
+    char clientName[33];
+    strncpy(clientName, plugin->label, 20);
+    clientName[25] = '\0';
+    sprintf(clientName + strlen(clientName), " [dssi:%d]", (int)getpid());
+    
+    if ((jackClient = jack_client_new(clientName)) == 0) {
         fprintf(stderr, "\njack-dssi-host: Error: Failed to connect to JACK server\n");
 	return 1;
     }
@@ -1091,10 +1096,10 @@ main(int argc, char **argv)
 	return 1;
     }
 
-    snd_seq_set_client_name(alsaClient, "jack-dssi-host");
+    snd_seq_set_client_name(alsaClient, clientName);
 
     if ((portid = snd_seq_create_simple_port
-	 (alsaClient, "jack-dssi-host",
+	 (alsaClient, clientName,
 	  SND_SEQ_PORT_CAP_WRITE | SND_SEQ_PORT_CAP_SUBS_WRITE, 0)) < 0) {
 	fprintf(stderr, "\njack-dssi-host: Error: Failed to create ALSA sequencer port\n");
 	return 1;
@@ -1141,6 +1146,7 @@ main(int argc, char **argv)
         plugin = instances[i].plugin;
         snprintf(osc_path_tmp, 1024, "%s/%s", url, instances[i].friendly_name);
         snprintf(tag, 12, "channel %d", instances[i].channel);
+	printf("jack-dssi-host: have OSC URL %s\n", osc_path_tmp);
         startGUI(plugin->dll->directory, plugin->dll->name,
                  plugin->descriptor->LADSPA_Plugin->Label, osc_path_tmp, tag);
     }
