@@ -2,7 +2,7 @@
 PREFIX ?= /usr/local
 PKGCONFIG_INSTALL_DIR = $(PREFIX)/lib/pkgconfig
 
-FLUID = $(PWD)/../fluidsynth-1.0.3
+FLUID ?= $(PWD)/../fluidsynth-1.0.3
 
 export PREFIX FLUID
 

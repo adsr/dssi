@@ -61,7 +61,7 @@ typedef struct _DSSI_Program_Descriptor {
     /** Bank number for this program.  Note that DSSI does not support
         MIDI-style separation of bank LSB and MSB values.  There is no
         restriction on the set of available banks: the numbers do not
-        need to be contiguous, there does not need to be a bank 0, etc */
+        need to be contiguous, there does not need to be a bank 0, etc. */
     unsigned long Bank;
 
     /** Program number (unique within its bank) for this program.
@@ -70,9 +70,7 @@ typedef struct _DSSI_Program_Descriptor {
 	be a program 0, etc. */
     unsigned long Program;
 
-    /** Name of the program.  This memory is allocated by the plugin
-	using malloc() and must be freed by the host when no longer
-	needed. */
+    /** Name of the program. */
     const char * Name;
 
 } DSSI_Program_Descriptor;

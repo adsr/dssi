@@ -12,7 +12,7 @@ You'll find here:
   dssi/dssi.h -- DSSI header file -- the comments define those parts
   of the spec dealing with host/plugin interaction (not covered in RFC)
 
-  dssi-jack-host/dssi-jack-host.c -- a simple JACK/ALSA-sequencer plugin host
+  jack-dssi-host/jack-dssi-host.c -- a simple JACK/ALSA-sequencer plugin host
 
   examples/dssi_osc_send.c
   examples/dssi_osc_update.c -- simple DSSI OSC test programs

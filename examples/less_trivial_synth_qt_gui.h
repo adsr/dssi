@@ -19,7 +19,7 @@
 #include <qlayout.h>
 
 extern "C" {
-#include <lo.h>
+#include <lo/lo.h>
 }
 
 class SynthGUI : public QFrame

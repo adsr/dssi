@@ -1186,22 +1186,23 @@ main(int argc, char **argv)
 	}
     }
 
+    jack_client_close(jackClient);
+
     while (i < instance_count) {
 	if (!instances[i].inactive) {
-	    if (instance->plugin->descriptor->LADSPA_Plugin->deactivate) {
-		instance->plugin->descriptor->LADSPA_Plugin->deactivate
-		    (instanceHandles + i);
+	    if (instances[i].plugin->descriptor->LADSPA_Plugin->deactivate) {
+		instances[i].plugin->descriptor->LADSPA_Plugin->deactivate
+		    (instanceHandles[i]);
 	    }
 	}
         if (instances[i].plugin->descriptor->LADSPA_Plugin &&
 	    instances[i].plugin->descriptor->LADSPA_Plugin->cleanup) {
             instances[i].plugin->descriptor->LADSPA_Plugin->cleanup
-		(instanceHandles + i);
+		(instanceHandles[i]);
 	}
 	++i;
     }
 
-    jack_client_close(jackClient);
     kill(0, SIGHUP);
 
     return 0;

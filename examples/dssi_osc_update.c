@@ -30,7 +30,7 @@ void osc_error(int num, const char *msg, const char *path)
 int main(int argc, char *argv[])
 {
     lo_server_thread st;
-    lo_target a;
+    lo_address a;
     char *host, *port, *path;
     char full_path[256];
     char *my_url = "osc://localhost:4445/";
@@ -43,7 +43,7 @@ int main(int argc, char *argv[])
     host = lo_url_get_hostname(argv[1]);
     port = lo_url_get_port(argv[1]);
     path = lo_url_get_path(argv[1]);
-    a = lo_target_new(host, port);
+    a = lo_address_new(host, port);
 
     snprintf(full_path, 255, "%s/update", path);
 
