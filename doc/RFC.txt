@@ -3,11 +3,30 @@
 Request for comments: Disposable Soft Synth Interface (DSSI)
 ============================================================
 
+Summary
+-------
+
+Disposable Soft Synth Interface (DSSI, pronounced "dizzy") is a
+proposal for a plugin API for software instruments (soft synths) with
+user interfaces, permitting them to be hosted in-process by audio
+applications.  Think of it as LADSPA-for-instruments, or something
+comparable to a simpler version of VSTi.
+
+The proposal consists of this RFC, which describes the background and
+defines part of the proposed standard, plus a documented header file
+(dssi.h) which defines the remainder.  The distribution also contains
+a handful of public-domain example files including an almost complete
+host implementation.  The API itself is licensed under the LGPL.
+
+This proposal was constructed by Steve Harris (steve@plugin.org.uk)
+and Chris Cannam (cannam@all-day-breakfast.com).
+
+
 Background and Requirements
 ---------------------------
 
-One of the biggest barriers to the acceptance of Linux audio software
-as a direct alternative to mainstream sequencer applications for other
+One of the barriers to the acceptance of Linux audio software as a
+direct alternative to mainstream sequencer applications for other
 platforms is the lack of a comparable way to operate software synth
 plugins.  There is an immediate need for an API that permits synth
 plugins to be written to a simple standard and then used in a range of
@@ -21,7 +40,7 @@ and GMPI is not.  Thus, we need to provide the simplest possible
 interim solution in a way that will prove compelling enough to support
 now, yet not so compelling as to supplant GMPI or any other
 comprehensive future proposal.  Hence this RFC: the Disposable Soft
-Synth Interface, or DSSI (pronounced "dizzy").
+Synth Interface, or DSSI.
 
 Because of the conservative nature of this proposal, the main
 requirements are:
@@ -273,20 +292,4 @@ And these are the methods the UI may support:
   Update the UI from an automated program change.  Takes an int
   argument for bank number and int for value.  (required method if
   the plugin supports program changes)
-
-
-"Project Plan"
---------------
-
-1/ Think of an API.
-
-2/ Test it to make sure it's not totally stupid.
-
-Iterate for a bit between 1 and 2 until it's clear that total
-stupidity is no longer in the air.
-
-3/ Take it to LAD and see how well it goes down.  If it looks as
-though a workable consensus based on this proposal can be reached,
-then try to reach it and get some implementations done.  Otherwise
-reframe or abandon.
 
