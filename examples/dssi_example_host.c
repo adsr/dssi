@@ -794,7 +794,7 @@ main(int argc, char **argv)
       if (ports) {
           if (ports[i]) {
               if (jack_connect(jackClient, jack_port_name(outputPorts[i]),
-                      ports[0])) {
+			       ports[i])) {
                     fprintf (stderr, "cannot connect output port %d\n", i);
               }
           } else {
