@@ -103,31 +103,37 @@ typedef struct _DSSI_Descriptor {
     const LADSPA_Descriptor *LADSPA_Plugin;
 
     /**
-     * This member is a function pointer that sends an arbitrary piece
-     * of configuration data to the plugin.  The configuration
-     * argument specifies some aspect of the synth's configuration
-     * that is to be changed, and the data argument specifies a new
-     * value for it.
+     * This member is a function pointer that sends a piece of
+     * configuration data to the plugin.  The key argument specifies
+     * some aspect of the synth's configuration that is to be changed,
+     * and the value argument specifies a new value for it.
      *
-     * This is expected to be invoked on behalf of the plugin GUI, for
-     * example to tell the plugin to load data from a file.  The
-     * plugin should act immediately on the request.  The return value
-     * will be delivered to the GUI or whichever other agent requested
-     * this configuration change; the host does not interpret it.
+     * This call is intended to set some session-scoped aspect of a
+     * plugin's behaviour, for example to tell the plugin to load
+     * sample data from a particular file.  The plugin should act
+     * immediately on the request.  The return value may be delivered
+     * to the GUI, shown to the user, or delivered elsewhere,
+     * depending on which agent requested this configuration change:
+     * the host does not interpret it, but will free it after use if
+     * it is non-NULL.
      *
-     * For automation purposes the request is considered to have been
-     * timed exactly at the boundary between the previous and next
-     * process slices.
+     * Calls to configure() are not automated as timed events.
+     * Instead, a host should remember the last value associated with
+     * each key passed to configure() during a given session for a
+     * given plugin instance, and should call configure() with the
+     * correct value for each key the next time it instantiates the
+     * "same" plugin instance, for example on reloading a project in
+     * which the plugin was used before.  Plugins should note that a
+     * host may typically instantiate a plugin multiple times with the
+     * same configuration values, and should share data between
+     * instances where practical.
      *
      * Calling configure() completely invalidates the program and bank
-     * information last obtained from the plugin.  Because of the
-     * intrusive and opaque nature of this function, it should not be
-     * used except for configuration details that cannot be described
-     * using numeric port data.
+     * information last obtained from the plugin.
      */
-    int (*configure)(LADSPA_Handle Instance,
-		     const char *configuration,
-		     const char *data);
+     char *(*configure)(LADSPA_Handle Instance,
+			const char *key,
+			const char *value);
 
     /**
      * This member is a function pointer that returns a description of
