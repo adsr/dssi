@@ -112,7 +112,8 @@ int osc_debug_handler(const char *path, const char *types, lo_arg **argv, int
 void
 signalHandler(int sig)
 {
-    fprintf(stderr, "%s: signal caught, trying to clean up and exit\n", myName);
+    fprintf(stderr, "%s: signal %d caught, trying to clean up and exit\n",
+	    myName, sig);
     exiting = 1;
 }
 
@@ -1314,6 +1315,7 @@ main(int argc, char **argv)
 
     jack_client_close(jackClient);
 
+    i = 0;
     while (i < instance_count) {
 	/* no -- see comment in osc_exiting_handler */
 	/* if (!instances[i].inactive) { */
@@ -1330,6 +1332,10 @@ main(int argc, char **argv)
 	++i;
     }
 
+    sleep(1);
+    sigemptyset (&_signals);
+    sigaddset(&_signals, SIGHUP);
+    pthread_sigmask(SIG_BLOCK, &_signals, 0);
     kill(0, SIGHUP);
 
     return 0;
