@@ -502,11 +502,11 @@ show_handler(const char *path, const char *types, lo_arg **argv,
     while (!gui->ready()) sleep(1);
     if (gui->isVisible()) gui->raise();
     else {
-	gui->show();
 	QRect geometry = gui->geometry();
 	QPoint p(QApplication::desktop()->width()/2 - geometry.width()/2,
 		 QApplication::desktop()->height()/2 - geometry.height()/2);
 	gui->move(p);
+	gui->show();
     }
 
     return 0;
@@ -617,6 +617,7 @@ main(int argc, char **argv)
 		   0);
 		 
     application.setMainWidget(&gui);
+    gui.setCaption(application.argv()[4]);
 
     QString myControlPath = QString("%1/control").arg(path);
     QString myConfigurePath = QString("%1/configure").arg(path);
