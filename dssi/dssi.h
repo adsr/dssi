@@ -232,8 +232,10 @@ typedef struct _DSSI_Descriptor {
      * function, except that it also supplies events to the synth.
      *
      * A plugin must provide either this function,
-     * run_multiple_synths() (see below), or both.  A plugin that
-     * does not provide this function must set this member to NULL.
+     * run_multiple_synths() (see below), or both.  A plugin that does
+     * not provide this function must set this member to NULL.  Plugin
+     * authors are encouraged to provide this function if at all
+     * possible.
      *
      * The Events pointer points to a block of EventCount ALSA
      * sequencer events, which is used to communicate MIDI and related
@@ -304,7 +306,10 @@ typedef struct _DSSI_Descriptor {
      *
      * A plugin must provide either this function, run_synths() (see
      * above), or both.  A plugin that does not provide this function
-     * must set this member to NULL.
+     * must set this member to NULL.  Plugin authors implementing
+     * run_multiple_synths are strongly encouraged to implement
+     * run_synth as well if at all possible, to aid simplistic hosts,
+     * even where it would be less efficient to use it.
      */
     void (*run_multiple_synths)(unsigned long     InstanceCount,
                                 LADSPA_Handle    *Instances,

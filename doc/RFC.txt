@@ -183,27 +183,34 @@ Multi-process Considerations' section below.
 This part of the proposal is documented in the 'DSSI Synth UIs'
 section below.
 
+
 DSSI Multi-thread / Multi-process Considerations
 ------------------------------------------------
 
-Most DSSI hosts will be multi-threaded applications, and an ideal
-DSSI host would be able to take advantage of multiple processors.
+Most DSSI hosts will be multi-threaded applications, and an ideal DSSI
+host would be able to take advantage of multiple processors.
 Developers of DSSI hosts and plugins must therefore implement
-appropriate interprocess synchronization measures, which should be
-as minimal and efficient as possible while allowing safe
-multi-threaded operation.  Therefore, a clear delineation of
-responsibility in this regard between host and plugin is needed. To
-this end, each of the DSSI or LADSPA API functions is assigned to
-one of three 'contexts', and restrictions are placed on when a host
-may make simultaneous calls to these functions, based on to which
-contexts the functions belong.  The three contexts are:
+appropriate interprocess synchronization measures, which should be as
+minimal and efficient as possible while allowing safe multi-threaded
+operation.  Therefore, a clear delineation of responsibility in this
+regard between host and plugin is needed.
 
-1. Initialization Context:    [!FIX! can we think of a better name?]
+(The same delineation is also necessary for LADSPA plugins and for
+other APIs such as VST, but it is often assumed or deduced from
+practical examples rather than documented.)
 
-   This context involves the instantiation and setup of plugins
-   before they are run, and their cleanup and disinstantiation when
-   they are no longer to be used.  The functions assigned to the
-   initialization context are:
+To this end, each of the DSSI or LADSPA API functions is assigned to
+one of three 'classes, and restrictions are placed on when a host may
+make simultaneous calls to these functions, based on to which classes
+of functions are in use.
+
+The three classes of function are:
+
+1. Initialization class:
+
+   This class contains functions that instantiate and set up plugins
+   before they are run, and that clean up and disinstantiate when they
+   are no longer to be used.  They are:
 
         activate()
         cleanup()
@@ -211,21 +218,20 @@ contexts the functions belong.  The three contexts are:
         deactivate()
         instantiate()
 
-2. Control Context:
+2. Control class:
 
-   This context includes those functions which control the behaviour
-   of an active or running plugin, yet (for real-time plugins) are not
-   expected to run in real time. The control context functions are:
+   This class contains functions that control the behaviour of an
+   active or running plugin, yet (for real-time plugins) are not
+   expected to run in real time. They are:
 
         configure()
         get_midi_controller_for_port()
         get_program()
-        set_run_adding_gain()   [!FIX! does this belong here or in the audio context?]
 
-3. Audio Context:
+3. Audio class:
 
-   This context typically would be the 'audio' or 'real-time'
-   thread(s) of a DSSI system.  The audio context functions are:
+   This class contains functions that typically would be run from the
+   'audio' or 'real-time' thread(s) of a DSSI system.  They are:
 
         run()
         run_adding()
@@ -233,48 +239,53 @@ contexts the functions belong.  The three contexts are:
         run_synth_adding()
         run_multiple_synths()
         run_multiple_synths_adding()
+        set_run_adding_gain()
         select_program()
 
-Host Restrictions:
 
-The restrictions detailed below apply to each 'instance group'
-within a running DSSI system.  When a host is using
-run_multiple_synths() with a particular plugin, then the instance
-group includes all active instances of that plugin.  When a plugin
-does not support run_multiple_synths(), or when it supplies both 
-run_synth() and run_multiple_synths() but the host chooses not to
-use run_multiple_synths(), then each instance of the plugin is its
-own instance group.
+Rules for Hosts:
 
 The restrictions that a DSSI host must observe within each instance
 group are:
 
-1. While one function within a particular context is being executed,
-   the host may not call any other functions of that context.  Thus
+1. While one function of a particular class is being executed,
+   the host may not call any other functions of that class.  Thus
    (for example), an instance group of plugins can assume that
    get_program() will not be called for any instance while a
    configure() call is still executing, and that select_program()
    will not be called for any instance while any of the run*()
    functions are executing,
 
-2. While a function in the initialization context is being run, the
-   host may not call any funtions of the other two contexts, and
+2. While a function of the initialization class is being run, the
+   host may not call any functions of the other two classes, and
    vice versa.  Thus, a plugin need not guard against simultaneous
    calls to e.g. configure() or run_synth() while in connect_port().
 
-Plugin Restrictions:
+These restrictions apply to each 'instance group' within a running
+DSSI system.  When a host is using run_multiple_synths() with a
+particular plugin, then the instance group includes all active
+instances of that plugin (i.e. instances with the same label and .so
+file, not all instances drawn from the same .so).  When a plugin does
+not support run_multiple_synths(), or when it supports both
+run_synth() and run_multiple_synths() but the host chooses not to use
+run_multiple_synths(), then each instance of the plugin is its own
+instance group.
+
+
+Rules for Plugins:
 
 Because it is permissible for a host to simultaneously call one
-control context function and one audio context function (per
-instance group), it is the responsibility of the plugin to ensure
-that its internal data structures are appropriately protected (with
+control class function and one audio class function (per instance
+group), it is the responsibility of the plugin to ensure that its
+internal data structures are appropriately protected (with
 e.g. mutexes or multi-thread-safe queues).
 
-Also, all of the audio context functions provided by a plugin must
+Also, all of the audio class functions provided by a plugin should
 obey restrictions similar to those placed on 'hard real-time' LADSPA
-plugins: no malloc() or free(), no libraries other than libc or
-libm, and no blocking I/O. (Unless, of course, the plugin is not
-intended for real-time operation.)
+plugins: no malloc() or free(), no libraries other than libc or libm,
+and no blocking I/O. (Unless, of course, the plugin is not intended
+for real-time operation.)
+
 
 DSSI Synth UIs
 --------------
