@@ -40,6 +40,7 @@ typedef struct {
 typedef struct {
     LADSPA_Data *output;
     LADSPA_Data *freq;
+    LADSPA_Data *vol;
     note_data data[MIDI_NOTES];
     float omega[MIDI_NOTES];
 } TS;
@@ -82,6 +83,9 @@ static void connectPortTS(LADSPA_Handle instance, unsigned long port,
     case TS_FREQ:
 	plugin->freq = data;
 	break;
+    case TS_VOLUME:
+	plugin->vol = data;
+	break;
     }
 }
 
@@ -121,6 +125,7 @@ static void runTS(LADSPA_Handle instance, unsigned long sample_count,
     TS *plugin_data = (TS *) instance;
     LADSPA_Data *const output = plugin_data->output;
     LADSPA_Data freq = *(plugin_data->freq);
+    LADSPA_Data vol = *(plugin_data->vol);
     note_data *data = plugin_data->data;
     unsigned long pos;
     unsigned long event_pos;
@@ -128,6 +133,9 @@ static void runTS(LADSPA_Handle instance, unsigned long sample_count,
 
     if (freq < 1.0) {
 	freq = 440.0f;
+    }
+    if (vol < 0.000001) {
+	vol = 1.0f;
     }
 
     if (event_count > 0) {
@@ -160,7 +168,7 @@ static void runTS(LADSPA_Handle instance, unsigned long sample_count,
 	output[pos] = 0.0f;
 	for (note = 0; note < MIDI_NOTES; note++) {
 	    if (data[note].active) {
-		output[pos] += sin(data[note].phase) * data[note].amp;
+		output[pos] += sin(data[note].phase) * data[note].amp * vol;
 		data[note].phase += plugin_data->omega[note] * freq;
 		if (data[note].phase > M_PI * 2.0) {
 		    data[note].phase -= M_PI * 2.0;
