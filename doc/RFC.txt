@@ -460,7 +460,8 @@ And these are the methods the UI may support:
 
   <base path>/show
   Show the UI, if it's a graphical interface in a window or some
-  other type that it makes sense to show or hide.  No arguments.
+  other type that it makes sense to show or hide.  If the UI is
+  already visible, bring it to the front if possible.  No arguments.
   (optional method for UIs in general, but it would be bad form
   to implement a graphical UI without it)
 
