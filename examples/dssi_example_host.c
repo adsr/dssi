@@ -44,6 +44,8 @@ static int midiEventReadIndex = 0, midiEventWriteIndex = 0;
 #define MIDI_CONTROLLER_COUNT 128
 static long controllerMap[MIDI_CONTROLLER_COUNT]; /* contains indices into pluginControlIns */
 
+LADSPA_Data get_port_default(const LADSPA_Descriptor *plugin, int port);
+
 void
 midi_callback()
 {
@@ -98,7 +100,7 @@ setControl(long controlIn, snd_seq_event_t *event)
 	    /* unbounded: might as well leave the value alone. */
 	} else {
 	    /* bounded above only. just shift the range. */
-	    value = ub - 127 + value;
+	    value = ub - 127.0f + value;
 	}
     } else {
 	if (!LADSPA_IS_HINT_BOUNDED_ABOVE(d)) {
@@ -106,8 +108,8 @@ setControl(long controlIn, snd_seq_event_t *event)
 	    value = lb + value;
 	} else {
 	    /* bounded both ends.  more interesting. */
-	    /*!!! todo: fill in logarithmic, sample rate &c */
-	    value = lb + ((ub - lb) * value / 127);
+	    /* XXX !!! todo: fill in logarithmic, sample rate &c */
+	    value = lb + ((ub - lb) * value / 127.0f);
 	}
     }
     
@@ -135,6 +137,10 @@ audio_callback(jack_nframes_t nframes, void *arg)
 	if (ev->type == SND_SEQ_EVENT_CONTROLLER) {
 
 	    int controller = ev->data.control.param;
+#ifdef DEBUG
+	    printf("CC %d(0x%02x) = %d\n", controller, controller,
+		    ev->data.control.value);
+#endif
 
 	    /* need to check for bank select, and also handle program
 	       changes around here */
@@ -357,7 +363,7 @@ main(int argc, char **argv)
     ins = outs = controlIns = controlOuts = 0;
     
     for (i = 0; i < MIDI_CONTROLLER_COUNT; ++i) {
-	controllerMap[i] = DSSI_NONE;
+	controllerMap[i] = -1;
     }
 
     for (i = 0; i < pluginDescriptor->LADSPA_Plugin->PortCount; ++i) {
@@ -392,12 +398,14 @@ main(int argc, char **argv)
 			fprintf(stderr,
 				"Buggy plugin: wants mapping for bank LSB\n");
 		    } else if (DSSI_IS_CC(controller)) {
-			controllerMap[controller] = DSSI_CC_NUMBER(controller);
+			controllerMap[DSSI_CC_NUMBER(controller)] = controlIns;
 		    }
 		}
 
 		pluginControlInPortNumbers[controlIns] = i;
 
+		pluginControlIns[controlIns] = get_port_default
+		    (pluginDescriptor->LADSPA_Plugin, i);
 		pluginDescriptor->LADSPA_Plugin->connect_port
 		    (pluginHandle, i, &pluginControlIns[controlIns++]);
 
@@ -463,3 +471,65 @@ main(int argc, char **argv)
     }
 }
 
+LADSPA_Data get_port_default(const LADSPA_Descriptor *plugin, int port)
+{
+    float fs = jack_get_sample_rate(jackClient);
+    LADSPA_PortRangeHint hint = plugin->PortRangeHints[port];
+    float lower = hint.LowerBound *
+	(LADSPA_IS_HINT_SAMPLE_RATE(hint.HintDescriptor) ? fs : 1.0f);
+    float upper = hint.UpperBound *
+	(LADSPA_IS_HINT_SAMPLE_RATE(hint.HintDescriptor) ? fs : 1.0f);
+
+    if (!LADSPA_IS_HINT_HAS_DEFAULT(hint.HintDescriptor)) {
+	if (!LADSPA_IS_HINT_BOUNDED_BELOW(hint.HintDescriptor) ||
+	    !LADSPA_IS_HINT_BOUNDED_ABOVE(hint.HintDescriptor)) {
+	    /* No hint, its not bounded, wild guess */
+	    return 0.0f;
+	}
+
+	if (lower <= 0.0f && upper >= 0.0f) {
+	    /* It spans 0.0, 0.0 is often a good guess */
+	    return 0.0f;
+	}
+
+	/* No clues, return minimum */
+	return lower;
+    }
+
+    /* Try all the easy ones */
+    
+    if (LADSPA_IS_HINT_DEFAULT_0(hint.HintDescriptor)) {
+	return 0.0f;
+    } else if (LADSPA_IS_HINT_DEFAULT_1(hint.HintDescriptor)) {
+	return 1.0f;
+    } else if (LADSPA_IS_HINT_DEFAULT_100(hint.HintDescriptor)) {
+	return 100.0f;
+    } else if (LADSPA_IS_HINT_DEFAULT_440(hint.HintDescriptor)) {
+	return 440.0f;
+    }
+
+    /* All the others require some bounds */
+
+    if (LADSPA_IS_HINT_BOUNDED_BELOW(hint.HintDescriptor)) {
+	if (LADSPA_IS_HINT_DEFAULT_MINIMUM(hint.HintDescriptor)) {
+	    return lower;
+	}
+    }
+    if (LADSPA_IS_HINT_BOUNDED_ABOVE(hint.HintDescriptor)) {
+	if (LADSPA_IS_HINT_DEFAULT_MAXIMUM(hint.HintDescriptor)) {
+	    return upper;
+	}
+	if (LADSPA_IS_HINT_BOUNDED_BELOW(hint.HintDescriptor)) {
+	    if (LADSPA_IS_HINT_DEFAULT_LOW(hint.HintDescriptor)) {
+		return lower * 0.75f + upper * 0.25f;
+	    } else if (LADSPA_IS_HINT_DEFAULT_MIDDLE(hint.HintDescriptor)) {
+		return lower * 0.5f + upper * 0.5f;
+	    } else if (LADSPA_IS_HINT_DEFAULT_HIGH(hint.HintDescriptor)) {
+		return lower * 0.25f + upper * 0.75f;
+	    }
+	}
+    }
+
+    /* fallback */
+    return 0.0f;
+}

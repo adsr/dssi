@@ -54,7 +54,7 @@ typedef struct {
 } note_data;
 
 typedef struct {
-    LADSPA_Data freq;
+    LADSPA_Data tune;
     LADSPA_Data attack;
     LADSPA_Data decay;
     LADSPA_Data sustain;
@@ -63,7 +63,7 @@ typedef struct {
 
 typedef struct {
     LADSPA_Data *output;
-    LADSPA_Data *freq;
+    LADSPA_Data *tune;
     LADSPA_Data *attack;
     LADSPA_Data *decay;
     LADSPA_Data *sustain;
@@ -115,7 +115,7 @@ static void connectPortLTS(LADSPA_Handle instance, unsigned long port,
 	plugin->output = data;
 	break;
     case LTS_FREQ:
-	plugin->freq = data;
+	plugin->tune = data;
 	break;
     case LTS_ATTACK:
 	plugin->attack = data;
@@ -176,30 +176,11 @@ static void runLTS(LADSPA_Handle instance, unsigned long sample_count,
     unsigned long event_pos;
     unsigned long note;
 
+    vals.tune = *(plugin_data->tune);
     vals.attack = *(plugin_data->attack) * plugin_data->fs;
     vals.decay = *(plugin_data->decay) * plugin_data->fs;
     vals.sustain = *(plugin_data->sustain) * 0.01f;
     vals.release = *(plugin_data->release) * plugin_data->fs;
-
-/* XXX hacks 'til we have port control */
-    if (*(plugin_data->freq) < 1.0) {
-	vals.freq = 440.0f;
-    } else {
-	vals.freq = *(plugin_data->freq);
-    }
-    if (vals.attack < 1.0f) {
-	vals.attack = 0.1f * plugin_data->fs;
-    }
-    if (vals.decay < 1.0f) {
-	vals.decay = 0.1f * plugin_data->fs;
-    }
-    if (vals.sustain < 1.0f) {
-	vals.sustain = 0.5f;
-    }
-    if (vals.release < 1.0f) {
-	vals.release = plugin_data->fs;
-    }
-/* XXX end of hacks */
 
     for (pos = 0, event_pos = 0; pos < sample_count; pos++) {
 	while (event_pos < event_count
@@ -211,14 +192,13 @@ static void runLTS(LADSPA_Handle instance, unsigned long sample_count,
 		    data[n.note].amp = n.velocity * GLOBAL_GAIN / 127.0f;
 		    data[n.note].state = attack;
 		    data[n.note].env = 0.0;
-		    data[n.note].env_d = GLOBAL_GAIN / vals.attack;
+		    data[n.note].env_d = 1.0f / vals.attack;
 		    data[n.note].phase = 0.0;
 		    data[n.note].counter = 0;
 		    data[n.note].next_event = vals.attack;
 		} else {
 		    data[n.note].state = release;
-		    data[n.note].env_d = -vals.sustain * data[n.note].amp /
-					 vals.release;
+		    data[n.note].env_d = -vals.sustain / vals.release;
 		    data[n.note].counter = 0;
 		    data[n.note].next_event = vals.release;
 		}
@@ -226,8 +206,7 @@ static void runLTS(LADSPA_Handle instance, unsigned long sample_count,
 		snd_seq_ev_note_t n = events[event_pos].data.note;
 
 		data[n.note].state = release;
-		data[n.note].env_d = -vals.sustain * data[n.note].amp /
-				     vals.release;
+		data[n.note].env_d = -data[n.note].env / vals.release;
 		data[n.note].counter = 0;
 		data[n.note].next_event = vals.release;
 	    }
@@ -250,26 +229,12 @@ static void run_voice(LTS *p, synth_vals *vals, int note, note_data *d,
 	return;
     }
 
-    d->phase += p->omega[note] * vals->freq;
+    d->phase += p->omega[note] * vals->tune;
     if (d->phase > M_PI * 2.0) {
 	d->phase -= M_PI * 2.0;
     }
     d->env += d->env_d;
-
-    switch (d->state) {
-    case inactive:
-	break;
-
-    case attack:
-    case decay:
-    case release:
-	*out += sin(d->phase) * d->amp * d->env;
-	break;
-
-    case sustain:
-	*out += sin(d->phase) * d->amp * vals->sustain;
-	break;
-    }
+    *out += sin(d->phase) * d->amp * d->env;
 
     if ((d->counter)++ >= d->next_event) {
 	switch (d->state) {
@@ -278,9 +243,9 @@ static void run_voice(LTS *p, synth_vals *vals, int note, note_data *d,
             
 	case attack:
 	    d->state = decay;
-	    d->env_d = (1.0f - vals->sustain) / vals->decay;
+	    d->env_d = (vals->sustain - 1.0f) / vals->decay;
 	    d->counter = 0;
-	    d->next_event = vals->sustain;
+	    d->next_event = vals->decay;
 	    break;
 
 	case decay:
@@ -304,6 +269,22 @@ static void run_voice(LTS *p, synth_vals *vals, int note, note_data *d,
 	    break;
 	}
     }
+}
+
+int getControllerLTS(LADSPA_Handle instance, unsigned long port)
+{
+    switch (port) {
+    case LTS_ATTACK:
+        return DSSI_CC(0x49);
+    case LTS_DECAY:
+        return DSSI_CC(0x4b);
+    case LTS_SUSTAIN:
+        return DSSI_CC(0x4f);
+    case LTS_RELEASE:
+        return DSSI_CC(0x48);
+    }
+
+    return DSSI_NONE;
 }
 
 void _init()
@@ -343,9 +324,9 @@ void _init()
 	port_names[LTS_OUTPUT] = "Output";
 	port_range_hints[LTS_OUTPUT].HintDescriptor = 0;
 
-	/* Parameters for freq */
+	/* Parameters for tune */
 	port_descriptors[LTS_FREQ] = LADSPA_PORT_INPUT | LADSPA_PORT_CONTROL;
-	port_names[LTS_FREQ] = "A tuning frequency (Hz)";
+	port_names[LTS_FREQ] = "A tuning (Hz)";
 	port_range_hints[LTS_FREQ].HintDescriptor = LADSPA_HINT_DEFAULT_440 |
 			LADSPA_HINT_BOUNDED_BELOW | LADSPA_HINT_BOUNDED_ABOVE;
 	port_range_hints[LTS_FREQ].LowerBound = 410;
@@ -355,10 +336,10 @@ void _init()
 	port_descriptors[LTS_ATTACK] = LADSPA_PORT_INPUT | LADSPA_PORT_CONTROL;
 	port_names[LTS_ATTACK] = "Attack time (s)";
 	port_range_hints[LTS_ATTACK].HintDescriptor =
-			LADSPA_HINT_DEFAULT_MIDDLE |
+			LADSPA_HINT_DEFAULT_LOW |
 			LADSPA_HINT_BOUNDED_BELOW | LADSPA_HINT_BOUNDED_ABOVE;
 	port_range_hints[LTS_ATTACK].LowerBound = 0.01f;
-	port_range_hints[LTS_ATTACK].UpperBound = 4.0f;
+	port_range_hints[LTS_ATTACK].UpperBound = 1.0f;
 
 	/* Parameters for decay */
 	port_descriptors[LTS_DECAY] = port_descriptors[LTS_ATTACK];
@@ -374,7 +355,7 @@ void _init()
 	port_descriptors[LTS_SUSTAIN] = LADSPA_PORT_INPUT | LADSPA_PORT_CONTROL;
 	port_names[LTS_SUSTAIN] = "Sustain level (%)";
 	port_range_hints[LTS_SUSTAIN].HintDescriptor =
-			LADSPA_HINT_DEFAULT_MIDDLE |
+			LADSPA_HINT_DEFAULT_HIGH |
 			LADSPA_HINT_BOUNDED_BELOW | LADSPA_HINT_BOUNDED_ABOVE;
 	port_range_hints[LTS_SUSTAIN].LowerBound = 0.0f;
 	port_range_hints[LTS_SUSTAIN].UpperBound = 100.0f;
@@ -383,11 +364,12 @@ void _init()
 	port_descriptors[LTS_RELEASE] = port_descriptors[LTS_ATTACK];
 	port_names[LTS_RELEASE] = "Decay time (s)";
 	port_range_hints[LTS_RELEASE].HintDescriptor =
-			port_range_hints[LTS_ATTACK].HintDescriptor;
+			LADSPA_HINT_DEFAULT_MIDDLE |
+			LADSPA_HINT_BOUNDED_BELOW | LADSPA_HINT_BOUNDED_ABOVE;
 	port_range_hints[LTS_RELEASE].LowerBound =
 			port_range_hints[LTS_ATTACK].LowerBound;
 	port_range_hints[LTS_RELEASE].UpperBound =
-			port_range_hints[LTS_ATTACK].UpperBound;
+			port_range_hints[LTS_ATTACK].UpperBound * 4.0f;
 
 	ltsLDescriptor->activate = activateLTS;
 	ltsLDescriptor->cleanup = cleanupLTS;
@@ -405,6 +387,7 @@ void _init()
 	ltsDDescriptor->LADSPA_Plugin = ltsLDescriptor;
 	ltsDDescriptor->configure = NULL;
 	ltsDDescriptor->get_program = NULL;
+	ltsDDescriptor->get_midi_controller_for_port = getControllerLTS;
 	ltsDDescriptor->select_program = NULL;
 	ltsDDescriptor->run_synth = runLTS;
     }
