@@ -235,7 +235,7 @@ debug_handler(const char *path, const char *types, lo_arg **argv,
 
     for (i = 0; i < argc; ++i) {
 	cerr << "arg " << i << ": type '" << types[i] << "': ";
-        lo_arg_pp(types[i], argv[i]);
+        lo_arg_pp((lo_type)types[i], argv[i]);
 	cerr << endl;
     }
 
@@ -312,9 +312,10 @@ main(int argc, char **argv)
 
     char *url = application.argv()[1];
 
-    char *host = osc_url_get_hostname(url);
-    char *port = osc_url_get_port(url);
-    char *path = osc_url_get_path(url);
+    char *host = lo_url_get_hostname(url);
+    char *port = lo_url_get_port(url);
+    char *path = lo_url_get_path(url);
+printf("path = %s\n", path);
 
     SynthGUI gui(host, port, path);
     application.setMainWidget(&gui);

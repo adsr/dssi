@@ -275,6 +275,7 @@ main(int argc, char **argv)
     void *pluginObject = 0;
     const char **ports;
     char update_path[32];
+    char *tmp;
     int i;
 
     /* Parse args and report usage */
@@ -394,10 +395,12 @@ main(int argc, char **argv)
     /* Create OSC thread */
 
     serverThread = lo_server_thread_new("4444", osc_error);
-    //snprintf((char *)osc_path, 31, "/dssi/%d.1", (int)getpid());
     snprintf((char *)osc_path, 31, "/dssi/test.1");
     snprintf(update_path, 31, "%s/update", osc_path);
-    printf("registering osc://localhost:4444%s\n", osc_path);
+    tmp = lo_server_thread_get_url(serverThread);
+    printf("registering %s%s\n", tmp, osc_path+1);
+    free(tmp);
+
     lo_server_thread_add_method(serverThread, osc_path, "if", osc_handler,
 				NULL);
     lo_server_thread_add_method(serverThread, update_path, "s", update_handler,
