@@ -94,7 +94,8 @@ SynthGUI::SynthGUI(char *host, char *port, char *path, QWidget *w) :
     timbreChanged (m_timbre ->value());
 
     QPushButton *testButton = new QPushButton("Test", this);
-    connect(testButton, SIGNAL(clicked()), this, SLOT(test()));
+    connect(testButton, SIGNAL(pressed()), this, SLOT(test_press()));
+    connect(testButton, SIGNAL(released()), this, SLOT(test_release()));
     layout->addWidget(testButton, 2, 6, Qt::AlignCenter);
 
     m_suppressHostUpdate = false;
@@ -216,9 +217,19 @@ SynthGUI::timbreChanged(int value)
 }
 
 void
-SynthGUI::test()
+SynthGUI::test_press()
 {
-    cerr << "Test button clicked!" << endl;
+    unsigned char noteon[4] = { 0x90, 0x3C, 0x40, 0x00 };
+
+    lo_send(m_host, m_path, "m", noteon);
+}
+
+void
+SynthGUI::test_release()
+{
+    unsigned char noteoff[4] = { 0x90, 0x3C, 0x00, 0x00 };
+
+    lo_send(m_host, m_path, "m", noteoff);
 }
 
 SynthGUI::~SynthGUI()
