@@ -1,9 +1,12 @@
 all: dssi_example_host trivial_synth.so less_trivial_synth.so
 
-test: all
-	 DSSI_PATH=`pwd` ./dssi_example_host less_trivial_synth.so
+clean:
+	rm -f *.o *.so
 
-CFLAGS = -Wall -g3 -I../dssi
+test: all
+	DSSI_PATH=`pwd` ./dssi_example_host less_trivial_synth.so
+
+CFLAGS = -Wall -g3 -O3 -I../dssi
 LDFLAGS = -ljack -lasound
 
 %.so: %.o
