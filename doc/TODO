@@ -7,11 +7,11 @@ In the example host:
  * support for log/samplerate ports
  * GUI discovery [DONE]
  * generic GUI support? nah
- * configure() support, MIDI-over-OSC
+ * configure() support, MIDI-over-OSC [latter DONE]
  * maybe NRPNs?
  
 In the less trivial synth GUI:
  * configure() / program changes?
- * some sort of MIDI event in / test button?
+ * some sort of MIDI event in / test button? [DONE]
  * what else?
 
