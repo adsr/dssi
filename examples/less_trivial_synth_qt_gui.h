@@ -29,8 +29,13 @@ class SynthGUI : public QFrame
 public:
     SynthGUI(QString host, QString port,
 	     QString controlPath, QString midiPath, QString programPath,
-	     QWidget *w = 0);
+	     QString exitingPath, QWidget *w = 0);
     virtual ~SynthGUI();
+
+    bool ready() const { return m_ready; }
+    void setReady(bool ready) { m_ready = ready; }
+
+    void setHostRequestedQuit(bool r) { m_hostRequestedQuit = r; }
 
 public slots:
     void setTuning (float hz);
@@ -39,6 +44,7 @@ public slots:
     void setSustain(float percent);
     void setRelease(float sec);
     void setTimbre (float val);
+    void aboutToQuit();
 
 protected slots:
     void tuningChanged (int);
@@ -69,8 +75,11 @@ protected:
     QString m_controlPath;
     QString m_midiPath;
     QString m_programPath;
+    QString m_exitingPath;
 
     bool m_suppressHostUpdate;
+    bool m_hostRequestedQuit;
+    bool m_ready;
 };
 
 

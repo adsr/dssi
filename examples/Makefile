@@ -6,7 +6,7 @@ TARGETS = \
 	dssi_osc_send \
 	dssi_osc_update \
 	less_trivial_synth_qt_gui \
-	less_trivial_synth/LTS_qt \
+	less_trivial_synth/LTS_qt
 
 all: $(TARGETS)
 

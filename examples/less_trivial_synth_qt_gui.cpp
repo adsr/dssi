@@ -29,12 +29,15 @@ using std::endl;
 
 SynthGUI::SynthGUI(QString host, QString port,
 		   QString controlPath, QString midiPath, QString programPath,
-		   QWidget *w) :
+		   QString exitingPath, QWidget *w) :
     QFrame(w),
     m_controlPath(controlPath),
     m_midiPath(midiPath),
     m_programPath(programPath),
-    m_suppressHostUpdate(true)
+    m_exitingPath(exitingPath),
+    m_suppressHostUpdate(true),
+    m_hostRequestedQuit(false),
+    m_ready(false)
 {
     m_host = lo_address_new(host, port);
 
@@ -236,6 +239,12 @@ SynthGUI::test_release()
     lo_send(m_host, m_midiPath, "m", noteoff);
 }
 
+void
+SynthGUI::aboutToQuit()
+{
+    if (!m_hostRequestedQuit) lo_send(m_host, m_exitingPath, "");
+}
+
 SynthGUI::~SynthGUI()
 {
     lo_address_free(m_host);
@@ -288,6 +297,7 @@ show_handler(const char *path, const char *types, lo_arg **argv,
 	     int argc, void *data, void *user_data)
 {
     SynthGUI *gui = static_cast<SynthGUI *>(user_data);
+    while (!gui->ready()) sleep(1);
     gui->show();
     return 0;
 }
@@ -302,11 +312,13 @@ hide_handler(const char *path, const char *types, lo_arg **argv,
 }
 
 int
-exit_handler(const char *path, const char *types, lo_arg **argv,
+quit_handler(const char *path, const char *types, lo_arg **argv,
 	     int argc, void *data, void *user_data)
 {
-    /*!!! need to return a value here and exit from loop! */
-    exit(0);
+    SynthGUI *gui = static_cast<SynthGUI *>(user_data);
+    gui->setHostRequestedQuit(true);
+    qApp->quit();
+    return 0;
 }
 
 int
@@ -390,6 +402,7 @@ main(int argc, char **argv)
 		 QString("%1/control").arg(path),
 		 QString("%1/midi").arg(path),
 		 QString("%1/program").arg(path),
+		 QString("%1/exiting").arg(path),
 		 0);
 		 
     application.setMainWidget(&gui);
@@ -399,15 +412,15 @@ main(int argc, char **argv)
     QString myConfigurePath = QString("%1/configure").arg(path);
     QString myShowPath = QString("%1/show").arg(path);
     QString myHidePath = QString("%1/hide").arg(path);
-    QString myExitPath = QString("%1/quit").arg(path);
+    QString myQuitPath = QString("%1/quit").arg(path);
 
     lo_server_thread thread = lo_server_thread_new(NULL, osc_error);
     lo_server_thread_add_method(thread, myControlPath, "if", control_handler, &gui);
-    lo_server_thread_add_method(thread, myProgramPath, "if", program_handler, &gui);
+    lo_server_thread_add_method(thread, myProgramPath, "iii", program_handler, &gui);
     lo_server_thread_add_method(thread, myConfigurePath, "ss", configure_handler, &gui);
     lo_server_thread_add_method(thread, myShowPath, "", show_handler, &gui);
     lo_server_thread_add_method(thread, myHidePath, "", hide_handler, &gui);
-    lo_server_thread_add_method(thread, myExitPath, "", exit_handler, &gui);
+    lo_server_thread_add_method(thread, myQuitPath, "", quit_handler, &gui);
     lo_server_thread_add_method(thread, NULL, NULL, debug_handler, &gui);
     lo_server_thread_start(thread);
 
@@ -417,6 +430,9 @@ main(int argc, char **argv)
 	    "s",
 	    QString("%1%2").arg(lo_server_thread_get_url(thread)).arg(path+1).data());
 
+    QObject::connect(&application, SIGNAL(aboutToQuit()), &gui, SLOT(aboutToQuit()));
+
+    gui.setReady(true);
     return application.exec();
 }
 

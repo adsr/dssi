@@ -27,9 +27,10 @@
 #include <ladspa.h>
 #include <alsa/seq_event.h>
 
-#define DSSI_VERSION "0.1"
+/* Expect API stability only from version 1.0 onwards! */
+#define DSSI_VERSION "0.2"
 #define DSSI_VERSION_MAJOR 0
-#define DSSI_VERSION_MINOR 1
+#define DSSI_VERSION_MINOR 2
 
 #ifdef __cplusplus
 extern "C" {
@@ -87,6 +88,15 @@ typedef struct _DSSI_Descriptor {
      * must set it to 1.
      */
     int DSSI_API_Version;
+
+    /**
+     * This member indicates the number of distinct channels supported
+     * by the plugin.  A value of 0 indicates that the channel value
+     * in program changes and note events will be ignored entirely.
+     * The MIDI standard is for 16 channels.  The DSSI API currently
+     * supports up to 256.
+     */
+    unsigned long ChannelCount;
 
     /**
      * A DSSI synth plugin consists of a LADSPA plugin plus an
@@ -160,17 +170,18 @@ typedef struct _DSSI_Descriptor {
 
     /**
      * This member is a function pointer that selects a new program
-     * for this synth.  The program change should take effect
-     * immediately at the start of the next run_synth() call.  (This
-     * means that a host providing the capability of changing programs
-     * between any two notes on a track must vary the block size so as
-     * to place the program change at the right place.  A host that
-     * wanted to avoid this would probably just instantiate a plugin
-     * for each program.)
+     * for a given channel on this synth.  The program change should
+     * take effect immediately at the start of the next run_synth()
+     * call.  (This means that a host providing the capability of
+     * changing programs between any two notes on a track must vary
+     * the block size so as to place the program change at the right
+     * place.  A host that wanted to avoid this would probably just
+     * instantiate a plugin for each program.)
      * 
      * A plugin that does not support programs at all should set this
      * member NULL.  Plugins should ignore a select_program() call
-     * with an invalid bank or program.
+     * with an invalid bank or program.  Plugins giving the value 0
+     * for their ChannelCount should ignore the Channel parameter.
      *
      * A plugin is not required to select any particular default
      * program on activate(): it's the host's duty to set a program
@@ -178,6 +189,7 @@ typedef struct _DSSI_Descriptor {
      * configure().
      */
     void (*select_program)(LADSPA_Handle Instance,
+			   unsigned long Channel,
 			   unsigned long Bank,
 			   unsigned long Program);
 
@@ -200,7 +212,10 @@ typedef struct _DSSI_Descriptor {
      * controller and NRPN value ranges to port ranges according to
      * the plugin's LADSPA port hints.  Hosts should not deliver
      * through run_synth any MIDI controller events that have already
-     * been mapped to control port values.
+     * been mapped to control port values.  Note that because control
+     * ports operate on a per-instance basis rather than a per-channel
+     * basis, the host will ignore the MIDI channel number on control
+     * change events that are mapped to port values.
      *
      * A plugin should not attempt to request mappings from
      * controllers 0 or 32 (MIDI Bank Select MSB and LSB).
@@ -218,8 +233,10 @@ typedef struct _DSSI_Descriptor {
      * events to the synth.  Each event is timestamped relative to the
      * start of the block, (mis)using the ALSA "tick time" field as a
      * frame count. The host is responsible for ensuring that events
-     * with differing timestamps are already ordered by time.  The
-     * plugin should ignore the "channel" field of each event.
+     * with differing timestamps are already ordered by time.
+     *
+     * Plugins giving the value 0 for their ChannelCount should ignore
+     * the "channel" field of each event.
      *
      * See also the notes on activation, port connection etc in
      * ladpsa.h, in the context of the LADSPA run() function.

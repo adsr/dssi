@@ -257,6 +257,7 @@ void _init()
     tsDDescriptor = (DSSI_Descriptor *) malloc(sizeof(DSSI_Descriptor));
     if (tsDDescriptor) {
 	tsDDescriptor->DSSI_API_Version = 1;
+	tsDDescriptor->ChannelCount = 0;
 	tsDDescriptor->LADSPA_Plugin = tsLDescriptor;
 	tsDDescriptor->configure = NULL;
 	tsDDescriptor->get_program = NULL;

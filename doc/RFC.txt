@@ -261,8 +261,8 @@ These are the methods the host may support:
   argument for port number and a float for value.  (required method)
 
   <base path>/program
-  Make a program change on the plugin.  Takes two int arguments, for
-  bank and program number.  (required method)
+  Make a program change on the plugin.  Takes three int arguments, for
+  channel, bank, and program number.  (required method)
 
   <base path>/update
   Request an update on the UI.  Takes one string argument, the UI's
@@ -285,6 +285,12 @@ These are the methods the host may support:
   guarantees are provided about timing accuracy, etc, of the MIDI
   communication.  (optional method)
 
+  <base path>/exiting
+  Notifies the host that the UI is in the process of exiting, for
+  example if the user closed the GUI window using the window manager.
+  The UI should not send this if exiting in response to a quit message
+  (see below).  No arguments.  (required method)
+
 And these are the methods the UI may support:
 
   <base path>/control
@@ -292,9 +298,9 @@ And these are the methods the UI may support:
   argument for port number and float for value.  (required method)
 
   <base path>/program
-  Update the UI from an automated program change.  Takes an int
-  argument for bank number and int for value.  (required method if
-  the plugin supports program changes)
+  Update the UI from an automated program change.  Takes three int
+  arguments, for channel, bank, and program number.  (required method
+  if the plugin supports program changes)
   
   <base path>/configure
   Used to notify a UI of the current configure state of the plugin.

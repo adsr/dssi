@@ -52,12 +52,18 @@ static const char osc_path[32];
 
 static int pluginProgramCount = 0;
 static DSSI_Program_Descriptor *pluginPrograms = 0;
-static int pluginProgramUpdated = 0;
-static long currentBank = 0;
-static long currentProgram = 0;
-static int pendingBankLSB = -1;
-static int pendingBankMSB = -1;
-static int pendingProgramChange = -1;
+
+typedef struct {
+    long bank;
+    long program;
+    int pendingBankLSB;
+    int pendingBankMSB;
+    int pendingProgram;
+    int programUpdated;
+} ProgramData;
+
+static ProgramData *programData;
+static int channelCount;
 
 lo_server_thread serverThread;
 lo_target uiTarget;
@@ -90,6 +96,8 @@ int osc_program_handler(const char *path, const char *types, lo_arg **argv, int
 			argc, void *data, void *user_data) ;
 int osc_configure_handler(const char *path, const char *types, lo_arg **argv, int
 			  argc, void *data, void *user_data) ;
+int osc_exiting_handler(const char *path, const char *types, lo_arg **argv, int argc,
+			void *data, void *user_data) ;
 int osc_debug_handler(const char *path, const char *types, lo_arg **argv, int
 		      argc, void *data, void *user_data) ;
 
@@ -207,11 +215,19 @@ audio_callback(jack_nframes_t nframes, void *arg)
 
 	    if (controller == 0) { // bank select MSB
 
-		pendingBankMSB = ev->data.control.value;
+		int channel = ev->data.control.channel;
+		if (pluginDescriptor->ChannelCount == 0) channel = 0;
+		if (channel < channelCount) {
+		    programData[channel].pendingBankMSB = ev->data.control.value;
+		}
 
 	    } else if (controller == 32) { // bank select LSB
 
-		pendingBankLSB = ev->data.control.value;
+		int channel = ev->data.control.channel;
+		if (pluginDescriptor->ChannelCount == 0) channel = 0;
+		if (channel < channelCount) {
+		    programData[channel].pendingBankLSB = ev->data.control.value;
+		}
 
 	    } else if (controller > 0 && controller < MIDI_CONTROLLER_COUNT) {
 
@@ -230,8 +246,12 @@ audio_callback(jack_nframes_t nframes, void *arg)
 	    }
 
 	} else if (ev->type == SND_SEQ_EVENT_PGMCHANGE) {
-	    
-	    pendingProgramChange = ev->data.control.value;
+
+	    int channel = ev->data.control.channel;
+	    if (pluginDescriptor->ChannelCount == 0) channel = 0;
+	    if (channel < channelCount) {
+		programData[channel].pendingProgram = ev->data.control.value;
+	    }
 
 	} else {
 	
@@ -249,37 +269,43 @@ audio_callback(jack_nframes_t nframes, void *arg)
 	processEventBuffer[i].time.tick = 0; 
     }
 
-    if (pendingProgramChange >= 0) {
+    for (i = 0; i < channelCount; ++i) {
 
-	int pc = pendingProgramChange;
-	int msb = pendingBankMSB;
-	int lsb = pendingBankLSB;
+	if (programData[i].pendingProgram >= 0) {
 
-	pendingProgramChange = -1;
-	pendingBankMSB = -1;
-	pendingBankLSB = -1;
+	    int pc  = programData[i].pendingProgram;
+	    int msb = programData[i].pendingBankMSB;
+	    int lsb = programData[i].pendingBankLSB;
 
-	//!!! gosh, I don't know this -- need to check with the specs:
-	// if you only send one of MSB/LSB controllers, should the
-	// other go to zero or remain as it was?  Assume it remains as
-	// it was, for now.
+	    programData[i].pendingProgram = -1;
+	    programData[i].pendingBankMSB = -1;
+	    programData[i].pendingBankLSB = -1;
 
-	if (lsb >= 0) {
-	    if (msb >= 0) {
-		currentBank = lsb + 128 * msb;
-	    } else {
-		currentBank = lsb + 128 * (currentBank / 128);
+	    //!!! gosh, I don't know this -- need to check with the specs:
+	    // if you only send one of MSB/LSB controllers, should the
+	    // other go to zero or remain as it was?  Assume it remains as
+	    // it was, for now.
+
+	    if (lsb >= 0) {
+		if (msb >= 0) {
+		    programData[i].bank = lsb + 128 * msb;
+		} else {
+		    programData[i].bank = lsb + 128 * (programData[i].bank / 128);
+		}
+	    } else if (msb >= 0) {
+		programData[i].bank = (programData[i].bank % 128) + 128 * msb;
 	    }
-	} else if (msb >= 0) {
-	    currentBank = (currentBank % 128) + 128 * msb;
-	}
 
-	currentProgram = pc;
+	    programData[i].program = pc;
 
-	if (pluginDescriptor->select_program) {
-	    pluginDescriptor->select_program(pluginHandle, currentBank, currentProgram);
+	    if (pluginDescriptor->select_program) {
+		pluginDescriptor->select_program(pluginHandle, i,
+						 programData[i].bank,
+						 programData[i].program);
+	    }
+
+	    programData[i].programUpdated = 1;
 	}
-	pluginProgramUpdated = 1;
     }
 
     pluginDescriptor->run_synth(pluginHandle,
@@ -346,7 +372,7 @@ load(const char *dllName, void **dll) /* returns directory where dll found */
 	    return strdup(element);
 	}
 
-	fprintf(stderr, "dssi_example_host: nope\n");
+	fprintf(stderr, "nope\n");
     }
     
     return 0;
@@ -427,14 +453,20 @@ query_programs()
 	pluginProgramCount = 0;
     }
 
-    pendingBankLSB = -1;
-    pendingBankMSB = -1;
-    pendingProgramChange = -1;
+    fprintf(stderr, "dssi_example_host: querying programs\n");
+
+    for (i = 0; i < channelCount; ++i) {
+	programData[i].pendingBankLSB = -1;
+	programData[i].pendingBankMSB = -1;
+	programData[i].pendingProgram = -1;
+    }
 
     if (pluginDescriptor->get_program && pluginDescriptor->select_program) {
 
 	/* Count the plugins first */
 	for (i = 0; pluginDescriptor->get_program(pluginHandle, i); ++i);
+
+	fprintf(stderr, "dssi_example_host: %d programs found\n", i);
 
 	if (i > 0) {
 	    pluginProgramCount = i;
@@ -447,11 +479,15 @@ query_programs()
                        i, pluginPrograms[i].Bank, pluginPrograms[i].Program,
                        pluginPrograms[i].Name);
 	    }
-	    // select program at index 0
-	    currentBank = pluginPrograms[0].Bank;
-	    currentProgram = pluginPrograms[0].Program;
-	    pluginDescriptor->select_program(pluginHandle, currentBank, currentProgram);
-	    pluginProgramUpdated = 1;
+	    // select program at index 0 for all channels
+	    for (i = 0; i < channelCount; ++i) {
+		programData[i].bank = pluginPrograms[0].Bank;
+		programData[i].program = pluginPrograms[0].Program;
+		pluginDescriptor->select_program(pluginHandle, i,
+						 programData[i].bank,
+						 programData[i].program);
+		programData[i].programUpdated = 1;
+	    }
 	}
     }
 }
@@ -592,6 +628,10 @@ main(int argc, char **argv)
 
     jack_set_process_callback(jackClient, audio_callback, 0);
 
+    channelCount = pluginDescriptor->ChannelCount;
+    if (channelCount == 0) channelCount = 1;
+    programData = (ProgramData *)calloc(channelCount, sizeof(ProgramData));
+
     /* Instantiate plugin */
 
     pluginHandle = pluginDescriptor->LADSPA_Plugin->instantiate
@@ -622,7 +662,10 @@ main(int argc, char **argv)
     lo_server_thread_add_method(serverThread, path_buffer, "s", osc_update_handler, NULL);
 
     snprintf(path_buffer, 31, "%s/program", osc_path);
-    lo_server_thread_add_method(serverThread, path_buffer, "ii", osc_program_handler, NULL);
+    lo_server_thread_add_method(serverThread, path_buffer, "iii", osc_program_handler, NULL);
+
+    snprintf(path_buffer, 31, "%s/exiting", osc_path);
+    lo_server_thread_add_method(serverThread, path_buffer, "", osc_exiting_handler, NULL);
 
     snprintf(path_buffer, 31, "%s/configure", osc_path);
     lo_server_thread_add_method(serverThread, path_buffer, "ss", osc_configure_handler, NULL);
@@ -768,21 +811,22 @@ main(int argc, char **argv)
 	   updated from the audio thread.  We at least try to minimise
 	   trouble by copying out before the expensive OSC call */
 
-	if (pluginProgramUpdated) {
-	    int bank = currentBank;
-	    int program = currentProgram;
-	    pluginProgramUpdated = 0;
-	    if (uiTarget) {
-		lo_send(uiTarget, gui_osc_program_path, "ii", bank, program);
-	    }
-	}
+	if (uiTarget) {
 
-	for (i = 0; i < controlIns; ++i) {
-	    if (pluginPortUpdated[pluginControlInPortNumbers[i]]) {
-		int port = pluginControlInPortNumbers[i];
-		float value = pluginControlIns[i];
-		pluginPortUpdated[pluginControlInPortNumbers[i]] = 0;
-		if (uiTarget) {
+	    for (i = 0; i < channelCount; ++i) {
+		if (programData[i].programUpdated) {
+		    int bank = programData[i].bank;
+		    int program = programData[i].program;
+		    programData[i].programUpdated = 0;
+		    lo_send(uiTarget, gui_osc_program_path, "iii", i, bank, program);
+		}
+	    }
+
+	    for (i = 0; i < controlIns; ++i) {
+		if (pluginPortUpdated[pluginControlInPortNumbers[i]]) {
+		    int port = pluginControlInPortNumbers[i];
+		    float value = pluginControlIns[i];
+		    pluginPortUpdated[pluginControlInPortNumbers[i]] = 0;
 		    lo_send(uiTarget, gui_osc_control_path, "if", port, value);
 		}
 	    }
@@ -942,10 +986,18 @@ int osc_control_handler(const char *path, const char *types, lo_arg **argv, int 
 int osc_program_handler(const char *path, const char *types, lo_arg **argv, int argc,
 			void *data, void *user_data) 
 {
-    int bank = argv[0]->i;
-    int program = argv[1]->i;
+    int channel = argv[0]->i;
+    int bank = argv[1]->i;
+    int program = argv[2]->i;
     int i;
     int found = 0;
+
+    if (pluginDescriptor->ChannelCount == 0) channel = 0;
+
+    if (channel < 0 || channel >= channelCount) {
+	printf("dssi_example_host: OSC: UI requested program change on invalid channel %d (range is 0-%d)\n", channel, channelCount);
+	return 1;
+    }
 
     for (i = 0; i < pluginProgramCount; ++i) {
 	if (pluginPrograms[i].Bank == bank &&
@@ -962,9 +1014,9 @@ int osc_program_handler(const char *path, const char *types, lo_arg **argv, int 
 		bank, program);
     }
 
-    pendingBankMSB = bank / 128;
-    pendingBankLSB = bank % 128;
-    pendingProgramChange = program;
+    programData[channel].pendingBankMSB = bank / 128;
+    programData[channel].pendingBankLSB = bank % 128;
+    programData[channel].pendingProgram = program;
 
     return 0;
 }
@@ -1035,9 +1087,14 @@ int osc_update_handler(const char *path, const char *types, lo_arg **argv, int a
 
     free((char *)path);
 
-    for (i=0; i<controlIns; i++) {
+    for (i = 0; i < controlIns; i++) {
 	int port = pluginControlInPortNumbers[i];
 	lo_send(uiTarget, gui_osc_control_path, "if", port, pluginControlIns[i]);
+    }
+
+    for (i = 0; i < channelCount; ++i) {
+	lo_send(uiTarget, gui_osc_program_path, "iii", i,
+		programData[i].bank, programData[i].program);
     }
 
     if (first_update) {
@@ -1052,6 +1109,13 @@ int osc_update_handler(const char *path, const char *types, lo_arg **argv, int a
        osc_configure_handler), and so we have nothing to send. */
 
     return 0;
+}
+
+int osc_exiting_handler(const char *path, const char *types, lo_arg **argv,
+		      int argc, void *data, void *user_data)
+{
+    printf("dssi_example_host: UI is exiting; let's go too\n");
+    exit(0);
 }
 
 int osc_debug_handler(const char *path, const char *types, lo_arg **argv,
