@@ -10,13 +10,13 @@
  * for DSSI effects plugins).
  *
  * This program expects the names of up to 16 DSSI synth plugins, in
- * the form '<dll-name>/<label>',* to be provided on the command line.
+ * the form '<dll-name>:<label>',* to be provided on the command line.
  * If just '<dll-name>' is provided, the first plugin in the DLL is
  * is used.  MIDI channels are assigned to each plugin instance, in
  * order, beginning with channel 0 (zero-based).  A plugin may be
  * easily instantiated multiple times by preceding its name and label
  * with a dash followed immediately by the desired number of instances,
- * e.g. '-3 my_plugins.so/zoomy' would create three instances of the
+ * e.g. '-3 my_plugins.so:zoomy' would create three instances of the
  * 'zoomy' plugin.
  */
 
@@ -655,14 +655,6 @@ query_programs(d3h_instance_t *instance)
                        instance->pluginPrograms[i].Program,
                        instance->pluginPrograms[i].Name);
 	    }
-	    // select program at index 0
-            // -FIX- this doesn't belong here, and should try to remember the current bank/program anyway */
-	    instance->currentBank = instance->pluginPrograms[0].Bank;
-	    instance->currentProgram = instance->pluginPrograms[0].Program;
-	    instance->plugin->descriptor->
-                select_program(instanceHandles[instance->number],
-                               instance->currentBank, instance->currentProgram);
-	    instance->uiNeedsProgramUpdate = 1;
 	}
     }
 }
@@ -734,7 +726,7 @@ main(int argc, char **argv)
 	fprintf(stderr, "  <libname> DSSI plugin library .so to load (searched for in $DSSI_PATH)\n");
 	fprintf(stderr, "  <label>   Label of plugin to load from library\n");
 	fprintf(stderr, "  [...]     Optionally more instance counts, plugins and labels\n");
-	fprintf(stderr, "\nExample: %s -2 lib1.so -1 lib2.so:fuzzy\n", argv[0]);
+	fprintf(stderr, "\nExample: %s -2 lib1.so -1 lib2.so%cfuzzy\n", argv[0], LABEL_SEP);
 	fprintf(stderr, "  run two instances of the first plugin found in lib1.so, assigned to MIDI\n  channels 0 and 1 and connected to the first available JACK outputs, and one\n  instance of the \"fuzzy\" plugin in lib2.so with MIDI channels 2 and 3 and\n  connected to the next available JACK outputs.\n");
 	fprintf(stderr,"\nAs a special case, if this program is started with a name other than\njack-dssi-host, and if that name (plus .so suffix) can be found in the DSSI path\nas a valid plugin library, and if no further command line arguments are given,\nthen the first plugin in that library will be loaded automatically.\n\n");
 	return 2;
@@ -1186,12 +1178,24 @@ main(int argc, char **argv)
     /* Look up synth programs */
 
     for (i = 0; i < instance_count; i++) {
-        query_programs(&instances[i]);
+        instance = &instances[i];
+
+        query_programs(instance);
+        
+        if (instance->plugin->descriptor->select_program &&
+            instance->pluginProgramCount > 0) {
+
+	    /* select program at index 0 */
+            unsigned long bank = instance->pluginPrograms[0].Bank;
+            instance->pendingBankMSB = bank / 128;
+            instance->pendingBankLSB = bank % 128;
+            instance->pendingProgramChange = instance->pluginPrograms[0].Program;
+	    instance->uiNeedsProgramUpdate = 1;
+        }
     }
 
     /* Create ALSA MIDI port */
 
-#if !(defined(__MACH__) && defined(__APPLE__))
     if (snd_seq_open(&alsaClient, "hw", SND_SEQ_OPEN_DUPLEX, 0) < 0) {
 	fprintf(stderr, "\n%s: Error: Failed to open ALSA sequencer interface\n",
 		myName);
@@ -1211,7 +1215,6 @@ main(int argc, char **argv)
     npfd = snd_seq_poll_descriptors_count(alsaClient, POLLIN);
     pfd = (struct pollfd *)alloca(npfd * sizeof(struct pollfd));
     snd_seq_poll_descriptors(alsaClient, pfd, npfd, POLLIN);
-#endif
 
     mb_init("host: ");
 
@@ -1260,11 +1263,9 @@ main(int argc, char **argv)
 
     while (!exiting) {
 
-#if !(defined(__MACH__) && defined(__APPLE__))
 	if (poll(pfd, npfd, 100) > 0) {
 	    midi_callback();
 	}
-#endif
 
 	/* Race conditions here, because the programs and ports are
 	   updated from the audio thread.  We at least try to minimise
@@ -1612,17 +1613,6 @@ osc_update_handler(d3h_instance_t *instance, lo_arg **argv)
 
     free((char *)path);
 
-    /* -FIX- should send the current program here, no? */
-
-    for (i = 0; i < instance->plugin->controlIns; i++) {
-        int in = i + instance->firstControlIn;
-	int port = pluginControlInPortNumbers[in];
-	lo_send(instance->uiTarget, instance->ui_osc_control_path, "if", port,
-                pluginControlIns[in]);
-	/* Avoid overloading the GUI if there are lots and lots of ports */
-	if ((i+1) % 50 == 0) usleep(300000);
-    }
-
     /* At this point a more substantial host might also call
      * configure() on the UI to set any state that it had remembered
      * for the plugin instance.  But we don't remember state for
@@ -1635,6 +1625,27 @@ osc_update_handler(d3h_instance_t *instance, lo_arg **argv)
 		DSSI_PROJECT_DIRECTORY_KEY, projectDirectory);
     }
 
+    /* Send current bank/program  (-FIX- another race...) */
+    if (instance->pendingProgramChange < 0) {
+        unsigned long bank = instance->currentBank;
+        unsigned long program = instance->currentProgram;
+        instance->uiNeedsProgramUpdate = 0;
+        if (instance->uiTarget) {
+            lo_send(instance->uiTarget, instance->ui_osc_program_path, "ii", bank, program);
+        }
+    }
+
+    /* Send control ports */
+    for (i = 0; i < instance->plugin->controlIns; i++) {
+        int in = i + instance->firstControlIn;
+	int port = pluginControlInPortNumbers[in];
+	lo_send(instance->uiTarget, instance->ui_osc_control_path, "if", port,
+                pluginControlIns[in]);
+	/* Avoid overloading the GUI if there are lots and lots of ports */
+	if ((i+1) % 50 == 0) usleep(300000);
+    }
+
+    /* Send 'show' */
     if (!instance->ui_initial_show_sent) {
 	lo_send(instance->uiTarget, instance->ui_osc_show_path, "");
 	instance->ui_initial_show_sent = 1;

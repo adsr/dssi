@@ -44,7 +44,7 @@ To build the example code you will need:
   ALSA 0.9/1.0.x
   JACK
   LADSPA
-  liblo-0.9 or above: http://www.plugin.org.uk/liblo/
+  liblo-0.12 or above: http://www.plugin.org.uk/liblo/
   libsndfile: http://www.mega-nerd.com/libsndfile/
   libsamplerate: http://www.mega-nerd.com/SRC/
   pkgconfig with PKG_CONFIG_PATH set appropriately to pick up liblo

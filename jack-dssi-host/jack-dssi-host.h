@@ -87,5 +87,5 @@ struct _d3h_instance_t {
     char            *ui_osc_show_path;
 };
 
-#endif /* _DSSI_V03_HOST_H */
+#endif /* _JACK_DSSI_HOST_H */
 
