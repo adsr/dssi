@@ -345,13 +345,17 @@ can be obtained from
 Note that liblo is distributed under a different licence from DSSI and
 so might not be a legal option for certain DSSI implementations.
 
-DSSI uses OSC in both directions between the host and UI.  When a
-user changes a port value in the UI, it sends an OSC request to the
-host, which informs the plugin of the change; when an automated port
-change occurs in the host, it sends an update to the UI.  (The host
-does not send updates to the UI for port changes that the UI itself
-initiated; likewise the UI must not send port changes back to the
-host that the host itself initiated.)
+DSSI uses OSC in both directions between the host and UI.  When a user
+changes a port value in the UI, it sends an OSC request to the host,
+which informs the plugin of the change; when an automated port change
+occurs in the host, or a plugin's output control port changes, the
+host sends an update to the UI.
+
+(The host does not send updates to the UI for port changes that the UI
+itself initiated; likewise the UI must not send port changes back to
+the host that the host itself initiated.  A host that supports
+multiple UIs should send each change to all UIs other than the one
+that initiated it.)
 
 Communications between the host and UI are deliberately as limited as
 possible.  There is, for example, no way for a UI to query the
@@ -523,4 +527,65 @@ And these are the methods the UI may support:
    any of its own state before exiting, but it should not retain state
    that may be necessary for the host to restore the plugin instance
    correctly.  (required method)
+
+
+LADSPA Compatibility and Miscellaneous Notes
+--------------------------------------------
+
+Port Rewriting
+~~~~~~~~~~~~~~
+A LADSPA plugin must never change the values of its own input ports.
+
+A DSSI plugin is allowed to do so when select_program is called.  The
+host must re-read the input port values after calling select_program,
+if it wishes to keep an accurate record of them.  (The host should
+_not_ notify any extant UI of the new values -- the UI is notified of
+the program change, and that should be enough.)
+
+Reset on activate()
+~~~~~~~~~~~~~~~~~~~
+LADSPA says "hosts can reinitialise a plugin instance by calling
+deactivate() and then activate(). In this case the plugin instance
+must reset all state information dependent on the history of the
+plugin instance except for any data locations provided by
+connect_port() and any gain set by set_run_adding_gain()."
+
+This is slightly ambiguous when applied to DSSI plugins that have
+internal state that does not change as a matter of course through
+time, but that is based on settings made via port and program changes
+or MIDI controller data.
+
+On activate(), a DSSI plugin should reset any internal state that
+changes over time and is not controlled by the host.  Anything that is
+set by the host (program data, port data, or any internal values
+derived from port data) should be left alone, or, in the case of data
+that change over time from host-provided values, reset to the values
+that were most recently set by the host.
+
+(The intention is that a host should be able to silence a plugin by
+calling deactivate followed by activate, and should know that after
+the activate call, the plugin has been reset to a state that is
+entirely defined by its host-visible configuration.)
+
+"Unique" IDs
+~~~~~~~~~~~~
+LADSPA defines a "Unique ID" value within a plugin identifier, which
+is intended to provide a globally unique identifier for the plugin
+type.  Plugin authors are expected to liaise with an unnamed central
+body to ensure that their plugin IDs are in fact unique.
+
+This is a problematic concept.  Without an official LADSPA
+organisation, it's not obvious how an author actually obtains a unique
+ID range.  Some authors may wish to write plugins that may vary in
+number, either by automatically generating them or by providing
+wrappers for other sorts of plugin.  For such plugins, it is
+impossible to guarantee that the "unique" ID is in fact unique.
+
+DSSI host authors are strongly recommended to ignore the LADSPA
+"Unique ID" when handling DSSI plugins.  Instead, they should identify
+a DSSI plugin by the DLL's .so name and the LADSPA "Label" (which
+should be unique within a single .so file).  Hosts that do otherwise
+will inevitably experience subtle but disastrous failures for some
+existing and yet-to-be-written plugins, because of the practical
+impossibility of making the "Unique ID" actually unique.
 

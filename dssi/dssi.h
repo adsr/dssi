@@ -215,6 +215,12 @@ typedef struct _DSSI_Descriptor {
      * program on activate(): it's the host's duty to set a program
      * explicitly.  The current program is invalidated by any call to
      * configure().
+     *
+     * A plugin is permitted to re-write the values of its input
+     * control ports when select_program is called.  The host should
+     * re-read the input control port values and update its own
+     * records appropriately.  (This is the only circumstance in
+     * which a DSSI plugin is allowed to modify its own input ports.)
      */
     void (*select_program)(LADSPA_Handle Instance,
 			   unsigned long Bank,
