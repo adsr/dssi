@@ -317,5 +317,9 @@ And these are the methods the UI may support:
   to implement a graphical UI without it)
 
   <base path>/quit
-  Exit the UI.  (required method)
+  Exit the UI.  The UI should not send any more communication to
+  the host about this plugin after receiving a quit message.
+  It may save any of its own state before exiting, but it should
+  not retain state that may be necessary for the host to restore
+  the plugin instance correctly.  (required method)
 
