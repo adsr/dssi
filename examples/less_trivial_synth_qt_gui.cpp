@@ -299,7 +299,8 @@ show_handler(const char *path, const char *types, lo_arg **argv,
 {
     SynthGUI *gui = static_cast<SynthGUI *>(user_data);
     while (!gui->ready()) sleep(1);
-    gui->show();
+    if (gui->isVisible()) gui->raise();
+    else gui->show();
     return 0;
 }
 
