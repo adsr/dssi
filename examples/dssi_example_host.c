@@ -24,6 +24,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <signal.h>
 #include <dirent.h>
 
@@ -331,20 +332,14 @@ startGUI(const char *directory, const char *dllName, const char *label,
 	if (S_ISREG(buf.st_mode) &&
 	    (buf.st_mode & (S_IXUSR | S_IXGRP | S_IXOTH))) {
 
-	    pid_t child;
-
 	    fprintf(stderr, "trying to execute GUI at \"%s\"\n",
 		    filename);
 
 	    if (fork() == 0) {
-		if (fork() == 0) {
-		    execlp(filename, filename, oscUrl, dllName, label, 0);
-		    perror("exec failed");
-		    exit(1);
-		}
-		exit(0);
+		execlp(filename, filename, oscUrl, dllName, label, 0);
+		perror("exec failed");
+		exit(1);
 	    }
-	    wait(0);
 
 	    free(filename);
 	    free(subpath);
@@ -663,6 +658,7 @@ main(int argc, char **argv)
 	if (poll(pfd, npfd, 100) > 0) {
 	    midi_callback();
 	}
+
 	//!!! and update programs too:
 	for (i = 0; i < controlIns; ++i) {
 	    if (pluginPortUpdated[pluginControlInPortNumbers[i]]) {
