@@ -158,11 +158,11 @@ sequencer or other plugin host application.
 
  * Existing plugin support
 
-   There aren't very many DSSI plugins available yet -- hardly
-   surprising, as it's a new API just approaching its 1.0 release --
-   but the example distribution alone contains more useful plugins
-   than are available for any of the alternative Linux synth plugin
-   APIs.
+   There aren't very many DSSI plugins available at the time of
+   writing -- hardly surprising, as it's a new API just approaching
+   its 1.0 release -- but the example distribution alone contains more
+   useful plugins than are available for any of the alternative Linux
+   synth plugin APIs.
 
  * Free VST support
 
