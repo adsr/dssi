@@ -10,6 +10,10 @@
    This example file is in the public domain.
 */
 
+#define _BSD_SOURCE    1
+#define _SVID_SOURCE   1
+#define _ISOC99_SOURCE 1
+
 #include <stdlib.h>
 #include <limits.h>
 #include <string.h>
@@ -156,14 +160,18 @@ static void addSample(Sampler *plugin_data, int n,
 	 i < count;
 	 ++i, ++s) {
 
-	unsigned long rs = (unsigned long)(s * ratio);
+	float         rs = s * ratio;
+        unsigned long rsi = lrintf(floor(rs));
 
-	if (rs >= plugin_data->sampleCount) {
+	if (rsi >= plugin_data->sampleCount) {
 	    plugin_data->ons[n] = -1;
 	    break;
 	}
 	
-	float sample = plugin_data->sampleData[rs];
+	float sample = plugin_data->sampleData[rsi] +
+                       ((plugin_data->sampleData[rsi + 1] -
+                         plugin_data->sampleData[rsi]) *
+                        (rs - (float)rsi));
 
 	if (plugin_data->offs[n] >= 0 &&
 	    pos + i + plugin_data->sampleNo > plugin_data->offs[n]) {
@@ -299,15 +307,15 @@ char *samplerLoad(Sampler *plugin_data, const char *path)
 	     path, info.frames, MAX_SAMPLE_COUNT);
     }
 
-    samples = info.frames;
+    /* add an extra sample for linear interpolation */
+    samples = info.frames + 1;
 
     tmpSamples = (float *)malloc(samples * sizeof(float));
     if (info.channels <= 1) {
-	tmpFrames = 0;
-	sf_read_float(file, tmpSamples, samples);
+	sf_read_float(file, tmpSamples, info.frames);
     } else {
-	tmpFrames = (float *)malloc(samples * info.channels * sizeof(float));
-	sf_readf_float(file, tmpFrames, samples);
+	tmpFrames = (float *)malloc(info.frames * info.channels * sizeof(float));
+	sf_readf_float(file, tmpFrames, info.frames);
 	for (i = 0; i < info.frames; ++i) {
 	    int j;
 	    tmpSamples[i] = 0.0f;
@@ -318,6 +326,7 @@ char *samplerLoad(Sampler *plugin_data, const char *path)
 	}
 	free(tmpFrames);
     }
+    tmpSamples[samples - 1] = 0.0f;
 
     tmpResamples = 0;
     if (info.samplerate != plugin_data->sampleRate) {
@@ -344,7 +353,7 @@ char *samplerLoad(Sampler *plugin_data, const char *path)
 
     tmpOld = plugin_data->sampleData;
     plugin_data->sampleData = tmpSamples;
-    plugin_data->sampleCount = samples;
+    plugin_data->sampleCount = samples - 1;
 
     for (i = 0; i < MIDI_NOTES; ++i) {
 	plugin_data->ons[i] = -1;

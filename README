@@ -49,7 +49,8 @@ To build the example code you will need:
   libsamplerate: http://www.mega-nerd.com/SRC/
   pkgconfig with PKG_CONFIG_PATH set appropriately to pick up liblo
 
-To build the less_trivial_synth Qt GUI, you will need:
+To build the less_trivial_synth and trivial_sampler Qt GUIs, you
+will need:
 
   Qt 3
 
