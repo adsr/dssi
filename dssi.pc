@@ -1,10 +1,10 @@
-prefix=/usr/local
+prefix=.PREFIX.
 exec_prefix=${prefix}
 libdir=${exec_prefix}/lib
 includedir=${prefix}/include
 
 Name: dssi
-Version: 0.4
+Version: 0.9
 Description: A plugin API for software instruments
 Libs: 
 Cflags: -I${includedir}

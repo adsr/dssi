@@ -29,7 +29,7 @@ install: all
 	mkdir -p $(PREFIX)/include
 	mkdir -p $(PKGCONFIG_INSTALL_DIR)
 	cp dssi/dssi.h $(PREFIX)/include/
-	cp dssi.pc $(PKGCONFIG_INSTALL_DIR)
+	sed s:.PREFIX.:$(PREFIX): dssi.pc >$(PKGCONFIG_INSTALL_DIR)/dssi.pc
 	@$(MAKE) -C jack-dssi-host install
 	@$(MAKE) -C examples install
 	@test -d $(FLUID)/src && $(MAKE) -C fluidsynth-dssi install || echo "Not installing fluidsynth-dssi"
