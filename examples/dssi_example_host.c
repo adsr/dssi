@@ -32,6 +32,7 @@ static float **pluginInputBuffers, **pluginOutputBuffers;
 
 static int controlIns, controlOuts;
 static float *pluginControlIns, *pluginControlOuts;
+static unsigned long *pluginControlInPortNumbers;
 
 static LADSPA_Handle pluginHandle = 0;
 static const DSSI_Descriptor *pluginDescriptor = 0;
@@ -39,6 +40,9 @@ static const DSSI_Descriptor *pluginDescriptor = 0;
 #define EVENT_BUFFER_SIZE 1024
 static snd_seq_event_t midiEventBuffer[EVENT_BUFFER_SIZE]; /* ring buffer */
 static int midiEventReadIndex = 0, midiEventWriteIndex = 0;
+
+#define MIDI_CONTROLLER_COUNT 128
+static long controllerMap[MIDI_CONTROLLER_COUNT]; /* contains indices into pluginControlIns */
 
 void
 midi_callback()
@@ -73,23 +77,86 @@ midi_callback()
     } while (snd_seq_event_input_pending(alsaClient, 0) > 0);
 }
 
+void
+setControl(long controlIn, snd_seq_event_t *event)
+{
+    long port = pluginControlInPortNumbers[controlIn];
+
+    LADSPA_PortRangeHintDescriptor d =
+	pluginDescriptor->LADSPA_Plugin->PortRangeHints[port].HintDescriptor;
+
+    LADSPA_Data lb = 
+	pluginDescriptor->LADSPA_Plugin->PortRangeHints[port].LowerBound;
+
+    LADSPA_Data ub = 
+	pluginDescriptor->LADSPA_Plugin->PortRangeHints[port].UpperBound;
+    
+    float value = (float)event->data.control.value;
+    
+    if (!LADSPA_IS_HINT_BOUNDED_BELOW(d)) {
+	if (!LADSPA_IS_HINT_BOUNDED_ABOVE(d)) {
+	    /* unbounded: might as well leave the value alone. */
+	} else {
+	    /* bounded above only. just shift the range. */
+	    value = ub - 127 + value;
+	}
+    } else {
+	if (!LADSPA_IS_HINT_BOUNDED_ABOVE(d)) {
+	    /* bounded below only. just shift the range. */
+	    value = lb + value;
+	} else {
+	    /* bounded both ends.  more interesting. */
+	    /*!!! todo: fill in logarithmic, sample rate &c */
+	    value = lb + ((ub - lb) * value / 127);
+	}
+    }
+    
+    printf("MIDI controller %d=%d -> control in %ld=%f\n",
+	   event->data.control.param, event->data.control.value,
+	   controlIn, value);
+
+    pluginControlIns[controlIn] = value;
+}
+
 int
 audio_callback(jack_nframes_t nframes, void *arg)
 {
     static snd_seq_event_t processEventBuffer[EVENT_BUFFER_SIZE];
     int i = 0, count = 0;
 
+    /* Not especially pretty or efficient */
+
     while (midiEventReadIndex != midiEventWriteIndex) {
 
 	if (count == EVENT_BUFFER_SIZE) break;
+
+	snd_seq_event_t *ev = &midiEventBuffer[midiEventReadIndex];
 	
-	processEventBuffer[count] = midiEventBuffer[midiEventReadIndex];
+	if (ev->type == SND_SEQ_EVENT_CONTROLLER) {
+
+	    int controller = ev->data.control.param;
+
+	    /* need to check for bank select, and also handle program
+	       changes around here */
+
+	    if (controller == 0 || controller == 32) { // bank: ignore for now
+
+	    } else if (controller > 0 && controller < MIDI_CONTROLLER_COUNT) {
+
+		long controlIn = controllerMap[controller];
+		if (controlIn >= 0) {
+		    setControl(controlIn, ev);
+		}
+	    }
+
+	} else {
+	
+	    processEventBuffer[count] = midiEventBuffer[midiEventReadIndex];
+	    ++count;
+	}
+
 	midiEventReadIndex = (midiEventReadIndex + 1) % EVENT_BUFFER_SIZE;
-
-	++count;
     }
-
-    /* ... also need to do controller mapping */
 
     for (i = 0; i < count; ++i) {
 	/* We can't exercise the plugin's support for the frame offset
@@ -248,6 +315,8 @@ main(int argc, char **argv)
     inputPorts = (jack_port_t **)malloc(ins * sizeof(jack_port_t *));
     pluginInputBuffers = (float **)malloc(ins * sizeof(float *));
     pluginControlIns = (float *)calloc(controlIns, sizeof(float));
+    pluginControlInPortNumbers =
+	(unsigned long *)malloc(controlIns * sizeof(unsigned long));
 
     outputPorts = (jack_port_t **)malloc(outs * sizeof(jack_port_t *));
     pluginOutputBuffers = (float **)malloc(outs * sizeof(float *));
@@ -286,6 +355,10 @@ main(int argc, char **argv)
     }
 
     ins = outs = controlIns = controlOuts = 0;
+    
+    for (i = 0; i < MIDI_CONTROLLER_COUNT; ++i) {
+	controllerMap[i] = -1;
+    }
 
     for (i = 0; i < pluginDescriptor->LADSPA_Plugin->PortCount; ++i) {
 
@@ -306,6 +379,25 @@ main(int argc, char **argv)
 	} else if (LADSPA_IS_PORT_CONTROL(pod)) {
 
 	    if (LADSPA_IS_PORT_INPUT(pod)) {
+
+		if (pluginDescriptor->get_midi_controller_for_port) {
+
+		    int controller = pluginDescriptor->
+			get_midi_controller_for_port(pluginHandle, i);
+
+		    if (controller == 0) {
+			fprintf(stderr,
+				"Buggy plugin: wants mapping for bank MSB\n");
+		    } else if (controller == 32) {
+			fprintf(stderr,
+				"Buggy plugin: wants mapping for bank LSB\n");
+		    } else if (controller > 0) {
+			controllerMap[controller] = controlIns;
+		    }
+		}
+
+		pluginControlInPortNumbers[controlIns] = i;
+
 		pluginDescriptor->LADSPA_Plugin->connect_port
 		    (pluginHandle, i, &pluginControlIns[controlIns++]);
 

@@ -184,11 +184,12 @@ typedef struct _DSSI_Descriptor {
      *
      * The host is responsible for doing proper scaling from MIDI
      * controller values to port ranges according to the plugin's
-     * LADSPA port hints.  Hosts should continue to deliver MIDI
-     * controller events through run_synth even when they have already
-     * been mapped to control port values, but plugins are strongly
-     * advised to discard them and exploit the port mapping and
-     * program change mechanisms where possible.
+     * LADSPA port hints.  Hosts should not deliver through run_synth
+     * any MIDI controller events that have already been mapped to
+     * control port values.
+     *
+     * A plugin should not attempt to request mappings from
+     * controllers 0 or 32 (MIDI Bank Select MSB and LSB).
      */
     int (*get_midi_controller_for_port)(LADSPA_Handle Instance,
 					unsigned long Port);
@@ -208,8 +209,8 @@ typedef struct _DSSI_Descriptor {
      * See also the notes on activation, port connection etc in
      * ladpsa.h, in the context of the LADSPA run() function.
      *
-     * About Note Events
-     * ~~~~~~~~~~~~~~~~~
+     * Note Events
+     * ~~~~~~~~~~~
      * There are two minor requirements aimed at making the plugin
      * writer's life as simple as possible:
      * 
@@ -223,6 +224,14 @@ typedef struct _DSSI_Descriptor {
      * NOTE_OFFs.  It is the host's responsibility to remap events in
      * cases where an external MIDI source has sent it zero-velocity
      * NOTE_ONs.
+     *
+     * Bank and Program Events
+     * ~~~~~~~~~~~~~~~~~~~~~~~
+     * Hosts must map MIDI Bank Select MSB and LSB (0 and 32)
+     * controllers and MIDI Program Change events onto the banks and
+     * programs specified by the plugin, using the DSSI select_program
+     * call.  No host should ever deliver a program change or bank
+     * select controller to a plugin via run_synth.
      */
     void (*run_synth)(LADSPA_Handle    Instance,
 		      unsigned long    SampleCount,
