@@ -217,7 +217,15 @@ audio_callback(jack_nframes_t nframes, void *arg)
 
 		long controlIn = controllerMap[controller];
 		if (controlIn >= 0) {
+
+                    /* controller is mapped to LADSPA port, update the port */
 		    setControl(controlIn, ev);
+
+		} else {
+
+                    /* controller is not mapped, so pass the event through to plugin */
+                    processEventBuffer[count] = midiEventBuffer[midiEventReadIndex];
+                    ++count;
 		}
 	    }
 
@@ -435,10 +443,13 @@ query_programs()
 	    while (i > 0) {
 		--i;
 		pluginPrograms[i] = *pluginDescriptor->get_program(pluginHandle, i);
-		currentBank = pluginPrograms[0].Bank;
-		currentProgram = pluginPrograms[0].Program;
+                printf("dssi_example_host: program %d is MIDI bank %lu program %lu, named '%s'\n",
+                       i, pluginPrograms[i].Bank, pluginPrograms[i].Program,
+                       pluginPrograms[i].Name);
 	    }
 	    // select program at index 0
+	    currentBank = pluginPrograms[0].Bank;
+	    currentProgram = pluginPrograms[0].Program;
 	    pluginDescriptor->select_program(pluginHandle, currentBank, currentProgram);
 	    pluginProgramUpdated = 1;
 	}
@@ -963,6 +974,7 @@ int osc_configure_handler(const char *path, const char *types, lo_arg **argv, in
 {
     const char *key = (const char *)&argv[0]->s;
     const char *value = (const char *)&argv[1]->s;
+    char *message;
 
     /* This is the simplest legal implementation of configure in a
        DSSI host.  The host has the option to remember the set of
@@ -976,7 +988,12 @@ int osc_configure_handler(const char *path, const char *types, lo_arg **argv, in
     
     if (pluginDescriptor->configure) {
 
-	pluginDescriptor->configure(pluginHandle, key, value);
+	message = pluginDescriptor->configure(pluginHandle, key, value);
+        if (message) {
+            printf("dssi_example_host: on configure '%s' '%s', plugin returned '%s'\n",
+                   message, key, value);
+            free(message);
+        }
 
 	/* configure invalidates bank and program information, so
 	   we should do this again now: */
