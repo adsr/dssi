@@ -267,8 +267,6 @@ static void runLTS(LADSPA_Handle instance, unsigned long sample_count,
 	    event_pos++;
 	}
 
-	/* this is a slightly crazy way to run a synths inner loop, I've
-	   just done it this way so its really obvious whats going on */
 	count = (sample_count - pos) > STEP_SIZE ? STEP_SIZE :
 		sample_count - pos;
 	for (i=0; i<count; i++) {
