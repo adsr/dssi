@@ -1,13 +1,13 @@
 /* -*- c-basic-offset: 4 -*-  vi:set ts=8 sts=4 sw=4: */
 
-/* dssi_example_host.c
+/* jack-dssi-host.c
  *
  * Disposable Soft Synth Interface
- * Constructed by Chris Cannam, Steve Harris and Sean Bolton
  *
- * This is an example DSSI host.  It listens for MIDI events on an
+ * This is a host for DSSI plugins.  It listens for MIDI events on an
  * ALSA sequencer port, delivers them to DSSI synths and outputs the
- * result via JACK.
+ * result via JACK.  It does not currently support audio input (e.g.
+ * for DSSI effects plugins).
  *
  * This program expects the names of up to 16 DSSI synth plugins, in
  * the form '<dll-name>/<label>',* to be provided on the command line.
@@ -18,9 +18,16 @@
  * with a dash followed immediately by the desired number of instances,
  * e.g. '-3 my_plugins.so/zoomy' would create three instances of the
  * 'zoomy' plugin.
- *
- * This example file is in the public domain.
-*/
+ */
+
+/*
+ * Copyright 2004 Chris Cannam, Steve Harris and Sean Bolton.
+ * 
+ * Permission to use, copy, modify, distribute, and sell this software
+ * for any purpose is hereby granted without fee, provided that the
+ * above copyright notice and this permission notice are included in
+ * all copies or substantial portions of the software.
+ */
 
 #include <ladspa.h>
 #include "dssi.h"
@@ -32,15 +39,17 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <sys/wait.h>
 #include <signal.h>
 #include <dirent.h>
+#include <time.h>
 
 #include <lo/lo.h>
 
-#include "dssi_example_host.h"
+#include "jack-dssi-host.h"
 
-#include "message_buffer.h"
+#include "../message_buffer/message_buffer.h"
 
 static snd_seq_t *alsaClient;
 
@@ -95,7 +104,7 @@ int osc_debug_handler(const char *path, const char *types, lo_arg **argv, int
 void
 signalHandler(int sig)
 {
-    fprintf(stderr, "dssi_example_host: signal caught, trying to clean up and exit\n");
+    fprintf(stderr, "jack-dssi-host: signal caught, trying to clean up and exit\n");
     exiting = 1;
 }
 
@@ -103,6 +112,7 @@ void
 midi_callback()
 {
     snd_seq_event_t *ev = 0;
+    struct timeval tv;
 
     pthread_mutex_lock(&midiEventBufferMutex);
 
@@ -110,13 +120,22 @@ midi_callback()
 	if (snd_seq_event_input(alsaClient, &ev) > 0) {
 
 	    if (midiEventReadIndex == midiEventWriteIndex + 1) {
-		fprintf(stderr, "dssi_example_host: Warning: MIDI event buffer overflow!\n");
+		fprintf(stderr, "jack-dssi-host: Warning: MIDI event buffer overflow!\n");
 		continue;
 	    }
 
 	    midiEventBuffer[midiEventWriteIndex] = *ev;
 
 	    ev = &midiEventBuffer[midiEventWriteIndex];
+
+	    /* At this point we change the event timestamp so that its
+	       real-time field contains the actual time at which it was
+	       received and processed (i.e. now).  Then in the audio
+	       callback we use that to calculate frame offset. */
+
+	    gettimeofday(&tv, NULL);
+	    ev->time.time.tv_sec = tv.tv_sec;
+	    ev->time.time.tv_nsec = tv.tv_usec * 1000L;
 
 	    if (ev->type == SND_SEQ_EVENT_NOTEON && ev->data.note.velocity == 0) {
 		ev->type =  SND_SEQ_EVENT_NOTEOFF;
@@ -169,7 +188,7 @@ setControl(d3h_instance_t *instance, long controlIn, snd_seq_event_t *event)
 	}
     }
     
-    printf("dssi_example_host: %s MIDI controller %d=%d -> control in %ld=%f\n",
+    printf("jack-dssi-host: %s MIDI controller %d=%d -> control in %ld=%f\n",
 	   instance->friendly_name, event->data.control.param,
            event->data.control.value, controlIn, value);
 
@@ -181,7 +200,14 @@ int
 audio_callback(jack_nframes_t nframes, void *arg)
 {
     int i;
+    int outCount;
     d3h_instance_t *instance;
+    struct timeval tv, evtv, diff;
+    long framediff;
+    jack_nframes_t rate;
+
+    gettimeofday(&tv, NULL);
+    rate = jack_get_sample_rate(jackClient);
 
     /* Not especially pretty or efficient */
 
@@ -200,24 +226,54 @@ audio_callback(jack_nframes_t nframes, void *arg)
         }
 
         instance = channel2instance[ev->data.note.channel];
-        if (!instance) {
-            /* discard messages intended for channels we aren't using */
+        if (!instance || instance->inactive) {
+            /* discard messages intended for channels we aren't using or
+	       absent or exited plugins */
             continue;
         }
         i = instance->number;
 
-        /* stop processing incoming MIDI if an instance's event buffer is
+        /* Stop processing incoming MIDI if an instance's event buffer is
          * full. */
 	if (instanceEventCounts[i] == EVENT_BUFFER_SIZE)
             break;
 
-	/* We can't exercise the plugin's support for the frame offset
-	 * count, because we don't know at what frame times the
-	 * events were intended to arrive. */
-	ev->time.tick = 0;
+	/* Each event has a real-time timestamp indicating when it was
+	 * received (set by midi_callback).  We need to calculate the
+	 * difference between then and the start of the audio callback
+	 * (held in tv), and use that to assign a frame offset, to
+	 * avoid jitter.  We should stop processing when we reach any
+	 * event received after the start of the audio callback. */
+
+	evtv.tv_sec = ev->time.time.tv_sec;
+	evtv.tv_usec = ev->time.time.tv_nsec / 1000;
+
+	if (evtv.tv_sec > tv.tv_sec ||
+	    (evtv.tv_sec == tv.tv_sec &&
+	     evtv.tv_usec > tv.tv_usec)) {
+	    break;
+	}
+
+	diff.tv_sec = tv.tv_sec - evtv.tv_sec;
+	if (tv.tv_usec < evtv.tv_usec) {
+	    --diff.tv_sec;
+	    diff.tv_usec = tv.tv_usec + 1000000 - evtv.tv_usec;
+	} else {
+	    diff.tv_usec = tv.tv_usec - evtv.tv_usec;
+	}
+
+	framediff =
+	    diff.tv_sec * rate +
+	    ((diff.tv_usec / 1000) * rate) / 1000 +
+	    ((diff.tv_usec - 1000 * (diff.tv_usec / 1000)) * rate) / 1000000;
+
+	if (framediff >= nframes) framediff = nframes - 1;
+	else if (framediff < 0) framediff = 0;
+
+	ev->time.tick = nframes - framediff - 1;
 
 	if (ev->type == SND_SEQ_EVENT_CONTROLLER) {
-
+	    
 	    int controller = ev->data.control.param;
 #ifdef DEBUG
 	    MB_MESSAGE("%s CC %d(0x%02x) = %d\n", instance->friendly_name,
@@ -263,6 +319,7 @@ audio_callback(jack_nframes_t nframes, void *arg)
     /* process pending program changes */
     for (i = 0; i < instance_count; i++) {
         instance = &instances[i];
+	if (instance->inactive) continue;
 
         if (instance->pendingProgramChange >= 0) {
 
@@ -301,8 +358,24 @@ audio_callback(jack_nframes_t nframes, void *arg)
     }
 
     /* call run_synth() or run_multiple_synths() for all instances */
+
     i = 0;
+    outCount = 0;
+
     while (i < instance_count) {
+
+	if (instances[i].inactive) {
+	    int j;
+	    for (j = 0; j < instances[i].plugin->outs; ++j) {
+		memset(pluginOutputBuffers[outCount + j], 0, nframes * sizeof(LADSPA_Data));
+	    }
+	    outCount += j;
+	    ++i;
+	    continue;
+	}
+
+	outCount += instances[i].plugin->outs;
+
         if (instances[i].plugin->descriptor->run_multiple_synths) {
             instances[i].plugin->descriptor->run_multiple_synths
                 (instances[i].plugin->instances,
@@ -322,12 +395,12 @@ audio_callback(jack_nframes_t nframes, void *arg)
 
     assert(sizeof(LADSPA_Data) == sizeof(jack_default_audio_sample_t));
 
-    for (i = 0; i < outsTotal; ++i) {
+    for (outCount = 0; outCount < outsTotal; ++outCount) {
 
 	jack_default_audio_sample_t *buffer =
-	    jack_port_get_buffer(outputPorts[i], nframes);
+	    jack_port_get_buffer(outputPorts[outCount], nframes);
 	
-	memcpy(buffer, pluginOutputBuffers[i], nframes * sizeof(LADSPA_Data));
+	memcpy(buffer, pluginOutputBuffers[outCount], nframes * sizeof(LADSPA_Data));
     }
 
     return 0;
@@ -336,27 +409,26 @@ audio_callback(jack_nframes_t nframes, void *arg)
 char *
 load(const char *dllName, void **dll) /* returns directory where dll found */
 {
-    char *dssiPath = getenv("DSSI_PATH");
-    char *ladspaPath = getenv("LADSPA_PATH");
-    char *path, *origPath, *element, *message;
+    static char *defaultDssiPath = 0;
+    const char *dssiPath = getenv("DSSI_PATH");
+    char *path, *element, *message;
     void *handle = 0;
 
-    if (!dssiPath && !ladspaPath) {
-	fprintf(stderr, "dssi_example_host: Error: Neither DSSI_PATH nor LADSPA_PATH is set\n");
-	return 0;
-    } else if (!dssiPath) {
-	fprintf(stderr, "dssi_example_host: Warning: DSSI_PATH not set, using LADSPA_PATH only\n");
+    if (!dssiPath) {
+	if (!defaultDssiPath) {
+	    const char *home = getenv("HOME");
+	    if (home) {
+		defaultDssiPath = malloc(strlen(home) + 60);
+		sprintf(defaultDssiPath, "/usr/local/lib/dssi:/usr/lib/dssi:%s/.dssi", home);
+	    } else {
+		defaultDssiPath = strdup("/usr/local/lib/dssi:/usr/lib/dssi");
+	    }
+	}
+	dssiPath = defaultDssiPath;
+	fprintf(stderr, "\njack-dssi-host: Warning: DSSI path not set\njack-dssi-host: Defaulting to \"%s\"\n\n", dssiPath);
     }
 
-    path = (char *)malloc((dssiPath   ? strlen(dssiPath)       : 0) +
-			  (ladspaPath ? strlen(ladspaPath) + 1 : 0) + 1);
-			  
-    sprintf(path, "%s%s%s",
-	    dssiPath ? dssiPath : "",
-	    ladspaPath ? ":" : "",
-	    ladspaPath ? ladspaPath : "");
-
-    origPath = path;
+    path = strdup(dssiPath);
     *dll = 0;
 
     while ((element = strtok(path, ":")) != 0) {
@@ -364,11 +436,11 @@ load(const char *dllName, void **dll) /* returns directory where dll found */
 	path = 0;
 
 	if (element[0] != '/') {
-	    fprintf(stderr, "dssi_example_host: Ignoring relative element %s in path\n", element);
+	    fprintf(stderr, "jack-dssi-host: Ignoring relative element \"%s\" in path\n", element);
 	    continue;
 	}
 
-	fprintf(stderr, "dssi_example_host: Looking for %s in %s... ", dllName, element);
+	fprintf(stderr, "jack-dssi-host: Looking for library \"%s\" in %s... ", dllName, element);
 
 	char *filePath = (char *)malloc(strlen(element) + strlen(dllName) + 2);
 	sprintf(filePath, "%s/%s", element, dllName);
@@ -378,21 +450,19 @@ load(const char *dllName, void **dll) /* returns directory where dll found */
 	    *dll = handle;
             free(filePath);
             path = strdup(element);
-            free(origPath);
 	    return path;
 	}
 
         message = dlerror();
         if (message) {
-            fprintf(stderr, "\ndssi_example_host: nope (%s)\n", message);
+            fprintf(stderr, "not found: %s\n", message);
         } else {
-            fprintf(stderr, "\ndssi_example_host: nope\n");
+            fprintf(stderr, "not found\n");
         }
 
         free(filePath);
     }
 
-    free(origPath);
     return 0;
 }
 
@@ -432,7 +502,7 @@ startGUI(const char *directory, const char *dllName, const char *label,
     for (fuzzy = 0; fuzzy <= 1; ++fuzzy) {
 
 	if (!(subdir = opendir(subpath))) {
-	    fprintf(stderr, "dssi_example_host: can't open plugin GUI directory \"%s\"\n", subpath);
+	    fprintf(stderr, "jack-dssi-host: can't open plugin GUI directory \"%s\"\n", subpath);
 	    free(subpath);
 	    free(dllBase);
 	    return;
@@ -463,7 +533,7 @@ startGUI(const char *directory, const char *dllName, const char *label,
 	    if ((S_ISREG(buf.st_mode) || S_ISLNK(buf.st_mode)) &&
 		(buf.st_mode & (S_IXUSR | S_IXGRP | S_IXOTH))) {
 		
-		fprintf(stderr, "dssi_example_host: trying to execute GUI at \"%s\"\n",
+		fprintf(stderr, "jack-dssi-host: trying to execute GUI at \"%s\"\n",
 			filename);
 		
 		if (fork() == 0) {
@@ -482,7 +552,7 @@ startGUI(const char *directory, const char *dllName, const char *label,
 	}
     }	
 
-    fprintf(stderr, "dssi_example_host: no GUI found for plugin \"%s\" in \"%s/\"\n",
+    fprintf(stderr, "jack-dssi-host: no GUI found for plugin \"%s\" in \"%s/\"\n",
 	    label, subpath);
     free(subpath);
     free(dllBase);
@@ -525,7 +595,7 @@ query_programs(d3h_instance_t *instance)
 		instance->pluginPrograms[i].Bank = descriptor->Bank;
 		instance->pluginPrograms[i].Program = descriptor->Program;
 		instance->pluginPrograms[i].Name = strdup(descriptor->Name);
-                printf("dssi_example_host: %s program %d is MIDI bank %lu program %lu, named '%s'\n",
+                printf("jack-dssi-host: %s program %d is MIDI bank %lu program %lu, named '%s'\n",
                        instance->friendly_name, i,
                        instance->pluginPrograms[i].Bank,
                        instance->pluginPrograms[i].Program,
@@ -573,22 +643,51 @@ main(int argc, char **argv)
     sigaddset(&_signals, SIGUSR2);
     pthread_sigmask(SIG_BLOCK, &_signals, 0);
 
-    fprintf(stderr, "dssi_example_host: dssi_example_host starting...\n");
-
     insTotal = outsTotal = controlInsTotal = controlOutsTotal = 0;
+
+    /* Handle run-plugin-from-executable-name special case */
+
+    if (argc == 1) {
+
+	const char *basename = strrchr(argv[0], '/');
+	if (!basename) basename = argv[0];
+	else ++basename;
+
+	if (basename[0] && strcmp(basename, "jack-dssi-host")) {
+	    /* look for basename + .so as plugin */
+	    dllName = malloc(strlen(basename) + 4);
+	    sprintf(dllName, "%s.so", basename);
+	    if (load(dllName, &pluginObject)) {
+		dlclose(pluginObject);
+		argc = 2;
+		argv = (char **)malloc(2 * sizeof(char *));
+		argv[0] = "jack-dssi-host";
+		argv[1] = dllName;
+	    }
+	}
+    }
 
     /* Parse args and report usage */
 
     if (argc < 2) {
-	fprintf(stderr, "dssi_example_host: Usage: %s [-#] dllname[/label] [...]\n", argv[0]);
+	fprintf(stderr, "\nUsage: %s [-<i>] <libname>[/<label>] [...]\n", argv[0]);
+	fprintf(stderr, "\n  <i>       Number of instances of each plugin to run (max %d total, default 1)\n", D3H_MAX_INSTANCES);
+	fprintf(stderr, "  <libname> DSSI plugin library .so to load (searched for in $DSSI_PATH)\n");
+	fprintf(stderr, "  <label>   Label of plugin to load from library\n");
+	fprintf(stderr, "  [...]     Optionally more instance counts, plugins and labels\n");
+	fprintf(stderr, "\nExample: %s -2 lib1.so -1 lib2.so/fuzzy\n", argv[0]);
+	fprintf(stderr, "  run two instances of the first plugin found in lib1.so, assigned to MIDI\n  channels 0 and 1 and connected to the first available JACK outputs, and one\n  instance of the \"fuzzy\" plugin in lib2.so with MIDI channels 2 and 3 and\n  connected to the next available JACK outputs.\n");
+	fprintf(stderr,"\nAs a special case, if this program is started with a name other than\njack-dssi-host, and if that name (plus .so suffix) can be found in the DSSI path\nas a valid plugin library, and if no further command line arguments are given,\nthen the first plugin in that library will be loaded automatically.\n\n");
 	return 2;
     }
+
+    fprintf(stderr, "jack-dssi-host: Starting...\n");
 
     reps = 1;
     for (i = 1; i < argc; i++) {
 
         if (instance_count >= D3H_MAX_INSTANCES) {
-            fprintf(stderr, "dssi_example_host: too many plugin instances specified\n");
+            fprintf(stderr, "jack-dssi-host: too many plugin instances specified (max is %d)\n", D3H_MAX_INSTANCES);
             return 2;
         }
 
@@ -651,14 +750,14 @@ main(int argc, char **argv)
                 
                 dll->directory = load(dllName, &pluginObject);
                 if (!dll->directory || !pluginObject) {
-                    fprintf(stderr, "dssi_example_host: Error: Failed to load plugin DLL %s\n", dllName);
+                    fprintf(stderr, "\njack-dssi-host: Error: Failed to load plugin library \"%s\"\n", dllName);
                     return 1;
                 }
                 
                 dll->descfn = (DSSI_Descriptor_Function)dlsym(pluginObject,
                                                               "dssi_descriptor");
                 if (!dll->descfn) {
-                    fprintf(stderr, "dssi_example_host: Error: %s is not a DSSI plugin DLL\n", dllName);
+                    fprintf(stderr, "\njack-dssi-host: Error: \"%s\" is not a DSSI plugin library\n", dllName);
                     return 1;
                 } 
 
@@ -676,7 +775,7 @@ main(int argc, char **argv)
                     break;
             }
             if (!plugin->descriptor) {
-                fprintf(stderr, "dssi_example_host: Error: Plugin label %s not found in DLL %s\n",
+                fprintf(stderr, "\njack-dssi-host: Error: Plugin label \"%s\" not found in library \"%s\"\n",
                         plugin->label ? plugin->label : "(none)", dllName);
                 return 1;
             }
@@ -722,6 +821,7 @@ main(int argc, char **argv)
 
                 instance->plugin = plugin;
                 instance->channel = instance_count;
+		instance->inactive = 1;
                 tmp = (char *)malloc(strlen(plugin->dll->name) +
                                      strlen(plugin->label) + 9);
                 instance->friendly_name = tmp;
@@ -756,7 +856,7 @@ main(int argc, char **argv)
                 plugin->instances++;
                 instance_count++;
             } else {
-                fprintf(stderr, "dssi_example_host: too many plugin instances specified\n");
+                fprintf(stderr, "jack-dssi-host: too many plugin instances specified\n");
                 return 2;
             }
         }
@@ -775,15 +875,15 @@ main(int argc, char **argv)
         instance = &instances[i];
         instance->number = i;
         channel2instance[instance->channel] = instance;
-        fprintf(stderr, "dssi_example_host: instance %2d on channel %2d, plugin %2d is '%s'\n",
+        fprintf(stderr, "jack-dssi-host: instance %2d on channel %2d, plugin %2d is \"%s\"\n",
                 i, instance->channel, instance->plugin->number,
                 instance->friendly_name);
     }
 
     /* Create buffers and JACK client and ports */
 
-    if ((jackClient = jack_client_new("dssi_example_host")) == 0) {
-        fprintf(stderr, "dssi_example_host: Error: Failed to connect to JACK server\n");
+    if ((jackClient = jack_client_new("jack-dssi-host")) == 0) {
+        fprintf(stderr, "\njack-dssi-host: Error: Failed to connect to JACK server\n");
 	return 1;
     }
 
@@ -847,7 +947,7 @@ main(int argc, char **argv)
             (plugin->descriptor->LADSPA_Plugin, jack_get_sample_rate(jackClient));
 
         if (!instanceHandles[i]) {
-            fprintf(stderr, "dssi_example_host: Error: Failed to instantiate instance %d!, plugin %s\n",
+            fprintf(stderr, "\njack-dssi-host: Error: Failed to instantiate instance %d!, plugin \"%s\"\n",
                     i, plugin->label);
             return 1;
         }
@@ -860,7 +960,7 @@ main(int argc, char **argv)
     tmp = lo_server_thread_get_url(serverThread);
     url = (char *)malloc(strlen(tmp) + strlen(osc_path_tmp));
     sprintf(url, "%s%s", tmp, osc_path_tmp + 1);
-    printf("dssi_example_host: registering %s\n", url);
+    printf("jack-dssi-host: registering %s\n", url);
     free(tmp);
 
     lo_server_thread_add_method(serverThread, NULL, NULL, osc_message_handler,
@@ -942,7 +1042,9 @@ main(int argc, char **argv)
         if (plugin->descriptor->LADSPA_Plugin->activate) {
             plugin->descriptor->LADSPA_Plugin->activate(instanceHandles[i]);
         }
+	instance->inactive = 0;
     } /* 'for (i...' instance number */
+
     assert(in == insTotal);
     assert(out == outsTotal);
     assert(controlIn == controlInsTotal);
@@ -958,16 +1060,16 @@ main(int argc, char **argv)
 
 #if !(defined(__MACH__) && defined(__APPLE__))
     if (snd_seq_open(&alsaClient, "hw", SND_SEQ_OPEN_DUPLEX, 0) < 0) {
-	fprintf(stderr, "dssi_example_host: Error: Failed to open ALSA sequencer interface\n");
+	fprintf(stderr, "\njack-dssi-host: Error: Failed to open ALSA sequencer interface\n");
 	return 1;
     }
 
-    snd_seq_set_client_name(alsaClient, "dssi_example_host");
+    snd_seq_set_client_name(alsaClient, "jack-dssi-host");
 
     if ((portid = snd_seq_create_simple_port
-	 (alsaClient, "dssi_example_host",
+	 (alsaClient, "jack-dssi-host",
 	  SND_SEQ_PORT_CAP_WRITE | SND_SEQ_PORT_CAP_SUBS_WRITE, 0)) < 0) {
-	fprintf(stderr, "dssi_example_host: Error: Failed to create ALSA sequencer port\n");
+	fprintf(stderr, "\njack-dssi-host: Error: Failed to create ALSA sequencer port\n");
 	return 1;
     }
 
@@ -1058,6 +1160,12 @@ main(int argc, char **argv)
     }
 
     while (i < instance_count) {
+	if (!instances[i].inactive) {
+	    if (instance->plugin->descriptor->LADSPA_Plugin->deactivate) {
+		instance->plugin->descriptor->LADSPA_Plugin->deactivate
+		    (instanceHandles + i);
+	    }
+	}
         if (instances[i].plugin->descriptor->LADSPA_Plugin &&
 	    instances[i].plugin->descriptor->LADSPA_Plugin->cleanup) {
             instances[i].plugin->descriptor->LADSPA_Plugin->cleanup
@@ -1137,7 +1245,7 @@ LADSPA_Data get_port_default(const LADSPA_Descriptor *plugin, int port)
 
 void osc_error(int num, const char *msg, const char *path)
 {
-    fprintf(stderr, "dssi_example_host: liblo server error %d in path %s: %s\n", num, path, msg);
+    fprintf(stderr, "jack-dssi-host: liblo server error %d in path %s: %s\n", num, path, msg);
 }
 
 int
@@ -1148,12 +1256,12 @@ osc_midi_handler(d3h_instance_t *instance, lo_arg **argv)
     long count;
     snd_seq_event_t *ev = &alsaEncodeBuffer[0];
 
-    printf("dssi_example_host: OSC: got midi request for %s (%02x %02x %02x %02x)\n",
+    printf("jack-dssi-host: OSC: got midi request for %s (%02x %02x %02x %02x)\n",
            instance->friendly_name, argv[0]->m[0], argv[0]->m[1], argv[0]->m[2], argv[0]->m[3]);
 
     if (!alsaCoder) {
         if (snd_midi_event_new(10, &alsaCoder)) {
-            fprintf(stderr, "dssi_example_host: Failed to initialise ALSA MIDI coder!\n");
+            fprintf(stderr, "jack-dssi-host: Failed to initialise ALSA MIDI coder!\n");
             return 0;
         }
     }
@@ -1178,17 +1286,17 @@ osc_midi_handler(d3h_instance_t *instance, lo_arg **argv)
 
     if (midiEventReadIndex == midiEventWriteIndex + 1) {
 
-        fprintf(stderr, "dssi_example_host: Warning: MIDI event buffer overflow!\n");
+        fprintf(stderr, "jack-dssi-host: Warning: MIDI event buffer overflow!\n");
 
     } else if (ev->type == SND_SEQ_EVENT_CONTROLLER &&
                (ev->data.control.param == 0 || ev->data.control.param == 32)) {
 
-        fprintf(stderr, "dssi_example_host: Warning: %s UI sent bank select controller (should use /program OSC call), ignoring\n",
+        fprintf(stderr, "jack-dssi-host: Warning: %s UI sent bank select controller (should use /program OSC call), ignoring\n",
                 instance->friendly_name);
 
     } else if (ev->type == SND_SEQ_EVENT_PGMCHANGE) {
 
-        fprintf(stderr, "dssi_example_host: Warning: %s UI sent program change (should use /program OSC call), ignoring\n",
+        fprintf(stderr, "jack-dssi-host: Warning: %s UI sent program change (should use /program OSC call), ignoring\n",
                 instance->friendly_name);
 
     } else {
@@ -1210,17 +1318,17 @@ osc_control_handler(d3h_instance_t *instance, lo_arg **argv)
     LADSPA_Data value = argv[1]->f;
 
     if (port < 0 || port > instance->plugin->descriptor->LADSPA_Plugin->PortCount) {
-	fprintf(stderr, "dssi_example_host: OSC: %s port number (%d) is out of range\n",
+	fprintf(stderr, "jack-dssi-host: OSC: %s port number (%d) is out of range\n",
                 instance->friendly_name, port);
 	return 0;
     }
     if (instance->pluginPortControlInNumbers[port] == -1) {
-	fprintf(stderr, "dssi_example_host: OSC: %s port %d is not a control in\n",
+	fprintf(stderr, "jack-dssi-host: OSC: %s port %d is not a control in\n",
                 instance->friendly_name, port);
 	return 0;
     }
     pluginControlIns[instance->pluginPortControlInNumbers[port]] = value;
-    printf("dssi_example_host: OSC: %s port %d = %f\n", instance->friendly_name,
+    printf("jack-dssi-host: OSC: %s port %d = %f\n", instance->friendly_name,
            port, value);
     
     return 0;
@@ -1237,7 +1345,7 @@ osc_program_handler(d3h_instance_t *instance, lo_arg **argv)
     for (i = 0; i < instance->pluginProgramCount; ++i) {
 	if (instance->pluginPrograms[i].Bank == bank &&
 	    instance->pluginPrograms[i].Program == program) {
-	    printf("dssi_example_host: OSC: %s setting bank %d, program %d, name %s\n",
+	    printf("jack-dssi-host: OSC: %s setting bank %d, program %d, name %s\n",
                    instance->friendly_name, bank, program,
                    instance->pluginPrograms[i].Name);
 	    found = 1;
@@ -1246,7 +1354,7 @@ osc_program_handler(d3h_instance_t *instance, lo_arg **argv)
     }
 
     if (!found) {
-	printf("dssi_example_host: OSC: %s UI requested unknown program: bank %d, program %d: sending to plugin anyway (plugin should ignore it)\n",
+	printf("jack-dssi-host: OSC: %s UI requested unknown program: bank %d, program %d: sending to plugin anyway (plugin should ignore it)\n",
 		instance->friendly_name, bank, program);
     }
 
@@ -1279,7 +1387,7 @@ osc_configure_handler(d3h_instance_t *instance, lo_arg **argv)
 	message = instance->plugin->descriptor->configure
                       (instanceHandles[instance->number], key, value);
         if (message) {
-            printf("dssi_example_host: on configure '%s' '%s', plugin '%s' returned '%s'\n",
+            printf("jack-dssi-host: on configure '%s' '%s', plugin '%s' returned '%s'\n",
                    key, value, instance->friendly_name, message);
             free(message);
         }
@@ -1300,7 +1408,7 @@ osc_update_handler(d3h_instance_t *instance, lo_arg **argv)
     unsigned int i;
     char *host, *port;
 
-    printf("dssi_example_host: OSC: got update request from <%s>\n", url);
+    printf("jack-dssi-host: OSC: got update request from <%s>\n", url);
 
     if (instance->uiTarget) lo_address_free(instance->uiTarget);
     host = lo_url_get_hostname(url);
@@ -1348,18 +1456,45 @@ osc_update_handler(d3h_instance_t *instance, lo_arg **argv)
     return 0;
 }
 
+int
+osc_exiting_handler(d3h_instance_t *instance, lo_arg **argv)
+{
+    int i;
+
+    printf("jack-dssi-host: OSC: got exiting notification for instance %d\n",
+	   instance->number);
+
+    if (instance->plugin) {
+	if (instance->plugin->descriptor->LADSPA_Plugin->deactivate) {
+            instance->plugin->descriptor->LADSPA_Plugin->deactivate
+		(instanceHandles[instance->number]);
+	}
+	instance->inactive = 1;
+    }
+
+    /* Do we have any plugins left running? */
+
+    for (i = 0; i < instance_count; ++i) {
+	if (!instances[i].inactive) return 0;
+    }
+
+    printf("jack-dssi-host: That was the last remaining plugin, exiting...\n");
+    exiting = 1;
+    return 0;
+}
+
 int osc_debug_handler(const char *path, const char *types, lo_arg **argv,
                       int argc, void *data, void *user_data)
 {
     int i;
 
-    printf("dssi_example_host: got unhandled OSC message:\npath: <%s>\n", path);
+    printf("jack-dssi-host: got unhandled OSC message:\npath: <%s>\n", path);
     for (i=0; i<argc; i++) {
-        printf("dssi_example_host: arg %d '%c' ", i, types[i]);
+        printf("jack-dssi-host: arg %d '%c' ", i, types[i]);
         lo_arg_pp(types[i], argv[i]);
         printf("\n");
     }
-    printf("dssi_example_host:\n");
+    printf("jack-dssi-host:\n");
 
     return 1;
 }
@@ -1383,6 +1518,8 @@ int osc_message_handler(const char *path, const char *types, lo_arg **argv,
     }
     if (!instance)
         return osc_debug_handler(path, types, argv, argc, data, user_data);
+    if (instance->inactive) 
+	return 0;
 
     method = path + 6 + strlen(instance->friendly_name);
     if (*method != '/' || *(method + 1) == 0)
@@ -1409,7 +1546,11 @@ int osc_message_handler(const char *path, const char *types, lo_arg **argv,
 
         return osc_update_handler(instance, argv);
 
+    } else if (!strcmp(method, "exiting") && argc == 0) {
+
+        return osc_exiting_handler(instance, argv);
     }
+
     return osc_debug_handler(path, types, argv, argc, data, user_data);
 }
 

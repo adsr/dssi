@@ -1,8 +1,15 @@
 
-PREFIX	:= /usr/local
+PREFIX ?= /usr/local
+
+LIBLO_CFLAGS ?= $(shell pkg-config liblo --cflags)
+LIBLO_LIBS ?= $(shell pkg-config liblo --libs || echo -llo -lpthread)
+
+QTDIR ?= /usr/lib/qt3
+QTINCDIR ?= $(QTDIR)/include
+QTLIBDIR ?= $(QTDIR)/lib
+MOC ?= $(QTDIR)/bin/moc
 
 TARGETS = \
-	dssi_example_host \
 	trivial_synth.so \
 	less_trivial_synth.so \
 	dssi_osc_send \
@@ -14,31 +21,30 @@ all: $(TARGETS)
 
 install: all
 	mkdir -p $(PREFIX)/bin
-	cp dssi_example_host dssi_osc_update dssi_osc_send $(PREFIX)/bin/
+	cp dssi_osc_update dssi_osc_send $(PREFIX)/bin/
 	mkdir -p $(PREFIX)/lib/dssi
 	cp trivial_synth.so $(PREFIX)/lib/dssi/
 	mkdir -p $(PREFIX)/lib/dssi/less_trivial_synth
 	cp less_trivial_synth.so $(PREFIX)/lib/dssi/
 	cp less_trivial_synth_qt_gui $(PREFIX)/lib/dssi/less_trivial_synth/LTS_qt
 
-CFLAGS = -Wall -g3 -I../dssi $(shell pkg-config liblo --cflags)
-CXXFLAGS = $(CFLAGS) -I$(QTDIR)/include
 
-LDLIBS = -ljack -lasound -lpthread $(shell pkg-config liblo --libs)
-QTGUI_LDLIBS = -L$(QTDIR)/lib -lqt-mt $(shell pkg-config liblo --libs)
+CFLAGS = -Wall -g3 -I../dssi $(LIBLO_CFLAGS)
+CXXFLAGS = $(CFLAGS) -I$(QTINCDIR)
+LDLIBS = $(LIBLO_LIBS)
 
-dssi_example_host:	dssi_example_host.o message_buffer.o
+QTGUI_LDLIBS = -L$(QTDIR)/lib -lqt-mt $(LIBLO_LIBS)
 
-dssi_osc_send:	dssi_osc_send.o message_buffer.o
+MB_O = ../message_buffer/message_buffer.o
 
-dssi_osc_update:	dssi_osc_update.o message_buffer.o
+dssi_osc_send:	dssi_osc_send.o
 
-dssi_example_host.o:	../dssi/dssi.h dssi_example_host.h
+dssi_osc_update:	dssi_osc_update.o
 
 less_trivial_synth_qt_gui.o:	less_trivial_synth_qt_gui.h
 
 less_trivial_synth_qt_gui.moc.cpp:	less_trivial_synth_qt_gui.h
-	$(QTDIR)/bin/moc $< > $@
+	$(MOC) $< > $@
 
 less_trivial_synth_qt_gui: less_trivial_synth_qt_gui.o less_trivial_synth_qt_gui.moc.o
 	$(CXX) -o $@ $^ $(QTGUI_LDLIBS)
@@ -47,8 +53,8 @@ less_trivial_synth/LTS_qt: less_trivial_synth_qt_gui
 	mkdir -p less_trivial_synth
 	cp less_trivial_synth_qt_gui less_trivial_synth/LTS_qt
 
-%.so: %.o ../dssi/dssi.h message_buffer.o
-	gcc -nostartfiles -shared -lc -lm -o $*.so $*.o message_buffer.o
+%.so: %.o ../dssi/dssi.h $(MB_O)
+	gcc -nostartfiles -shared -lc -lm -o $*.so $*.o $(MB_O)
 
 clean:
 	rm -f *.o *.moc.*
@@ -56,7 +62,3 @@ clean:
 distclean:	clean
 	rm -f *~ $(TARGETS)
 	rm -rf less_trivial_synth
-
-test: all
-	DSSI_PATH=`pwd` ./dssi_example_host less_trivial_synth.so
-

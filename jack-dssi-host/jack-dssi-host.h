@@ -1,17 +1,25 @@
-/* dssi_v03_host.h
+/* -*- c-basic-offset: 4 -*-  vi:set ts=8 sts=4 sw=4: */
+
+/* jack-dssi-host.h
  *
  * Disposable Soft Synth Interface
- * Constructed by Chris Cannam, Steve Harris and Sean Bolton
  *
- * This is an example DSSI host.  It listens for MIDI events on an
- * ALSA sequencer port, delivers them to a DSSI synth and outputs the
+ * This is a host for DSSI plugins.  It listens for MIDI events on an
+ * ALSA sequencer port, delivers them to DSSI synths and outputs the
  * result via JACK.
- *
- * This example file is in the public domain.
-*/
+ */
 
-#ifndef _DSSI_V03_HOST_H
-#define _DSSI_V03_HOST_H
+/*
+ * Copyright 2004 Chris Cannam, Steve Harris and Sean Bolton.
+ * 
+ * Permission to use, copy, modify, distribute, and sell this software
+ * for any purpose is hereby granted without fee, provided that the
+ * above copyright notice and this permission notice are included in
+ * all copies or substantial portions of the software.
+ */
+
+#ifndef _JACK_DSSI_HOST_H
+#define _JACK_DSSI_HOST_H
 
 #include "dssi.h"
 #include <lo/lo.h>
@@ -52,6 +60,7 @@ struct _d3h_instance_t {
     int              number;
     d3h_plugin_t    *plugin;
     int              channel;
+    int              inactive;
     char            *friendly_name;
     int              firstControlIn;                       /* the offset to translate instance control in # to global control in # */
     int             *pluginPortControlInNumbers;           /* maps instance LADSPA port # to global control in # */

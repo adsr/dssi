@@ -20,7 +20,7 @@
 
 #include "dssi.h"
 #include "ladspa.h"
-#include "message_buffer.h"
+#include "../message_buffer/message_buffer.h"
 #include "saw.h"
 
 #define LTS_OUTPUT  0

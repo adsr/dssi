@@ -1,24 +1,36 @@
 
-PREFIX	:= /usr/local
+PREFIX ?= /usr/local
+PKGCONFIG_INSTALL_DIR = $(PREFIX)/lib/pkgconfig
+
+FLUID = $(PWD)/../fluidsynth-1.0.3
+
+export PREFIX FLUID
 
 all:
-	(cd examples && make)
-	(cd tests && make test)
+	@$(MAKE) -C examples
+	@$(MAKE) -C jack-dssi-host
+	@$(MAKE) -C tests
+	@test -d $(FLUID)/src && $(MAKE) -C fluidsynth-dssi || echo "WARNING: Fluidsynth sources not found in $(FLUID), not building fluidsynth-dssi"
 
 clean:
-	(cd examples && make clean)
-	(cd tests && make clean)
-	(cd fluidsynth-dssi && make clean)
+	@$(MAKE) -C examples clean
+	@$(MAKE) -C jack-dssi-host clean
+	@$(MAKE) -C tests clean
+	@$(MAKE) -C fluidsynth-dssi clean
 
 distclean:
-	(cd examples && make distclean)
-	(cd tests && make distclean)
-	(cd fluidsynth-dssi && make distclean)
+	@$(MAKE) -C examples distclean
+	@$(MAKE) -C jack-dssi-host distclean
+	@$(MAKE) -C tests distclean
+	@$(MAKE) -C fluidsynth-dssi distclean
 	rm -f *~ doc/*~ dssi/*~
 
 install: all
 	mkdir -p $(PREFIX)/include
-	mkdir -p $(PREFIX)/lib/pkgconfig
+	mkdir -p $(PKGCONFIG_INSTALL_DIR)
 	cp dssi/dssi.h $(PREFIX)/include/
-	cp dssi.pc $(PREFIX)/lib/pkgconfig/
-	(cd examples && make install)
+	cp dssi.pc $(PKGCONFIG_INSTALL_DIR)
+	@$(MAKE) -C examples install
+	@$(MAKE) -C jack-dssi-host install
+	@test -d $(FLUID)/src && $(MAKE) -C fluidsynth-dssi install || echo "Not installing fluidsynth-dssi"
+
