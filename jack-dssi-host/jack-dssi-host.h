@@ -36,7 +36,8 @@ struct _d3h_dll_t {
     d3h_dll_t               *next;
     char                    *name;
     char                    *directory;
-    DSSI_Descriptor_Function descfn;
+    int                      is_DSSI_dll;
+    DSSI_Descriptor_Function descfn;      /* if is_DSSI_dll is false, this is a LADSPA_Descriptor_Function */
 };
 
 typedef struct _d3h_plugin_t d3h_plugin_t;
@@ -84,6 +85,7 @@ struct _d3h_instance_t {
     char            *ui_osc_control_path;
     char            *ui_osc_configure_path;
     char            *ui_osc_program_path;
+    char            *ui_osc_quit_path;
     char            *ui_osc_show_path;
 };
 

@@ -29,6 +29,10 @@
  * all copies or substantial portions of the software.
  */
 
+#define _BSD_SOURCE    1
+#define _SVID_SOURCE   1
+#define _ISOC99_SOURCE 1
+
 #include <ladspa.h>
 #include "dssi.h"
 #include <alsa/asoundlib.h>
@@ -187,6 +191,7 @@ setControl(d3h_instance_t *instance, long controlIn, snd_seq_event_t *event)
     if (!LADSPA_IS_HINT_BOUNDED_BELOW(d)) {
 	if (!LADSPA_IS_HINT_BOUNDED_ABOVE(d)) {
 	    /* unbounded: might as well leave the value alone. */
+            return;
 	} else {
 	    /* bounded above only. just shift the range. */
 	    value = ub - 127.0f + value;
@@ -197,7 +202,7 @@ setControl(d3h_instance_t *instance, long controlIn, snd_seq_event_t *event)
 	    value = lb + value;
 	} else {
 	    /* bounded both ends.  more interesting. */
-	    if (LADSPA_IS_HINT_LOGARITHMIC(d)) {
+            if (LADSPA_IS_HINT_LOGARITHMIC(d) && lb > 0.0f && ub > 0.0f) {
 		const float llb = logf(lb);
 		const float lub = logf(ub);
 
@@ -206,6 +211,9 @@ setControl(d3h_instance_t *instance, long controlIn, snd_seq_event_t *event)
 		value = lb + ((ub - lb) * value / 127.0f);
 	    }
 	}
+    }
+    if (LADSPA_IS_HINT_INTEGER(d)) {
+        value = lrintf(value);
     }
 
     if (verbose) {
@@ -452,7 +460,7 @@ load(const char *dllName, void **dll, int quiet) /* returns directory where dll 
 {
     static char *defaultDssiPath = 0;
     const char *dssiPath = getenv("DSSI_PATH");
-    char *path, *element, *message;
+    char *path, *origPath, *element, *message;
     void *handle = 0;
 
     /* If the dllName is an absolute path */
@@ -463,7 +471,7 @@ load(const char *dllName, void **dll, int quiet) /* returns directory where dll 
 	    return dirname(path);
 	} else {
 	    if (!quiet) {
-		fprintf(stderr, "Cannot find DSSI plugin at '%s'\n", dllName);
+		fprintf(stderr, "Cannot find DSSI or LADSPA plugin at '%s'\n", dllName);
 	    }
 	    return NULL;
 	}
@@ -486,6 +494,7 @@ load(const char *dllName, void **dll, int quiet) /* returns directory where dll 
     }
 
     path = strdup(dssiPath);
+    origPath = path;
     *dll = 0;
 
     while ((element = strtok(path, ":")) != 0) {
@@ -515,6 +524,7 @@ load(const char *dllName, void **dll, int quiet) /* returns directory where dll 
 	    *dll = handle;
             free(filePath);
             path = strdup(element);
+            free(origPath);
 	    return path;
 	}
 
@@ -530,6 +540,7 @@ load(const char *dllName, void **dll, int quiet) /* returns directory where dll 
         free(filePath);
     }
 
+    free(origPath);
     return 0;
 }
 
@@ -564,7 +575,8 @@ startGUI(const char *directory, const char *dllName, const char *label,
     }
 
     if (*dllBase == '/') {
-	subpath = strdup(dllBase);
+        subpath = dllBase;
+        dllBase = strdup(strrchr(subpath, '/') + 1);
     } else {
 	subpath = (char *)malloc(strlen(directory) + strlen(dllBase) + 2);
 	sprintf(subpath, "%s/%s", directory, dllBase);
@@ -590,12 +602,18 @@ startGUI(const char *directory, const char *dllName, const char *label,
 		if (verbose) {
 		    fprintf(stderr, "checking %s against %s\n", entry->d_name, dllBase);
 		}
-		if (strncmp(entry->d_name, dllBase, strlen(dllBase))) continue;
+                if (strlen(entry->d_name) <= strlen(dllBase) ||
+                    strncmp(entry->d_name, dllBase, strlen(dllBase)) ||
+                    entry->d_name[strlen(dllBase)] != '_')
+                    continue;
 	    } else {
 		if (verbose) {
 		    fprintf(stderr, "checking %s against %s\n", entry->d_name, label);
 		}
-		if (strncmp(entry->d_name, label, strlen(label))) continue;
+                if (strlen(entry->d_name) <= strlen(label) ||
+                    strncmp(entry->d_name, label, strlen(label)) ||
+                    entry->d_name[strlen(label)] != '_')
+                    continue;
 	    }
 	    
 	    filename = (char *)malloc(strlen(subpath) + strlen(entry->d_name) + 2);
@@ -861,10 +879,17 @@ main(int argc, char **argv)
                 
                 dll->descfn = (DSSI_Descriptor_Function)dlsym(pluginObject,
                                                               "dssi_descriptor");
-                if (!dll->descfn) {
-                    fprintf(stderr, "\n%s: Error: \"%s\" is not a DSSI plugin library\n", myName, dllName);
-                    return 1;
-                } 
+                if (dll->descfn) {
+                    dll->is_DSSI_dll = 1;
+                } else {
+                    dll->descfn = (DSSI_Descriptor_Function)dlsym(pluginObject,
+                                                                  "ladspa_descriptor");
+                    if (!dll->descfn) {
+                        fprintf(stderr, "\n%s: Error: \"%s\" is not a DSSI or LADSPA plugin library\n", myName, dllName);
+                        return 1;
+                    }
+                    dll->is_DSSI_dll = 0;
+                }
 
                 dll->next = dlls;
                 dlls = dll;
@@ -873,11 +898,33 @@ main(int argc, char **argv)
 
             /* get the plugin descriptor */
             j = 0;
-            while ((plugin->descriptor = dll->descfn(j++))) {
-                if (!plugin->label ||
-                    !strcmp(plugin->descriptor->LADSPA_Plugin->Label,
-                            plugin->label))
-                    break;
+            if (dll->is_DSSI_dll) {
+                const DSSI_Descriptor *desc;
+
+                while ((desc = dll->descfn(j++))) {
+                    if (!plugin->label ||
+                        !strcmp(desc->LADSPA_Plugin->Label, plugin->label)) {
+                        plugin->descriptor = desc;
+                        break;
+                    }
+                }
+            } else { /* LADSPA plugin; create and use a dummy DSSI descriptor */
+                LADSPA_Descriptor *desc;
+
+                plugin->descriptor = (const DSSI_Descriptor *)calloc(1, sizeof(DSSI_Descriptor));
+                ((DSSI_Descriptor *)plugin->descriptor)->DSSI_API_Version = 1;
+
+                while ((desc = (LADSPA_Descriptor *)dll->descfn(j++))) {
+                    if (!plugin->label ||
+                        !strcmp(desc->Label, plugin->label)) {
+                        ((DSSI_Descriptor *)plugin->descriptor)->LADSPA_Plugin = desc;
+                        break;
+                    }
+                }
+                if (!plugin->descriptor->LADSPA_Plugin) {
+                    free((void *)plugin->descriptor);
+                    plugin->descriptor = NULL;
+                }
             }
             if (!plugin->descriptor) {
                 fprintf(stderr, "\n%s: Error: Plugin label \"%s\" not found in library \"%s\"\n",
@@ -938,7 +985,6 @@ main(int argc, char **argv)
                     tmp = tmp + strlen(tmp);
                 }
                 sprintf(tmp, "/%s/chan%02d", plugin->label, instance->channel);
-                instance->firstControlIn = controlInsTotal;
                 instance->pluginProgramCount = 0;
                 instance->pluginPrograms = NULL;
                 instance->currentBank = 0;
@@ -951,6 +997,7 @@ main(int argc, char **argv)
                 instance->uiNeedsProgramUpdate = 0;
                 instance->ui_osc_control_path = NULL;
                 instance->ui_osc_program_path = NULL;
+                instance->ui_osc_quit_path = NULL;
                 instance->ui_osc_show_path = NULL;
 
                 insTotal += plugin->ins;
@@ -1143,6 +1190,7 @@ main(int argc, char **argv)
     for (i = 0; i < instance_count; i++) {   /* i is instance number */
         instance = &instances[i];
 
+        instance->firstControlIn = controlIn;
         for (j = 0; j < MIDI_CONTROLLER_COUNT; j++) {
             instance->controllerMap[j] = -1;
         }
@@ -1340,21 +1388,25 @@ main(int argc, char **argv)
 
     jack_client_close(jackClient);
 
-    i = 0;
-    while (i < instance_count) {
-	/* no -- see comment in osc_exiting_handler */
-	/* if (!instances[i].inactive) { */
-	    if (instances[i].plugin->descriptor->LADSPA_Plugin->deactivate) {
-		instances[i].plugin->descriptor->LADSPA_Plugin->deactivate
-		    (instanceHandles[i]);
-	    }
-	/* } */
-        if (instances[i].plugin->descriptor->LADSPA_Plugin &&
-	    instances[i].plugin->descriptor->LADSPA_Plugin->cleanup) {
-            instances[i].plugin->descriptor->LADSPA_Plugin->cleanup
+    /* cleanup plugins */
+    for (i = 0; i < instance_count; i++) {
+        instance = &instances[i];
+
+        if (instance->uiTarget) {
+            lo_send(instance->uiTarget, instance->ui_osc_quit_path, "");
+            lo_address_free(instance->uiTarget);
+            instance->uiTarget = NULL;
+        }
+
+        if (instance->plugin->descriptor->LADSPA_Plugin->deactivate) {
+            instance->plugin->descriptor->LADSPA_Plugin->deactivate
 		(instanceHandles[i]);
 	}
-	++i;
+
+        if (instance->plugin->descriptor->LADSPA_Plugin->cleanup) {
+            instance->plugin->descriptor->LADSPA_Plugin->cleanup
+		(instanceHandles[i]);
+	}
     }
 
     sleep(1);
@@ -1414,12 +1466,23 @@ LADSPA_Data get_port_default(const LADSPA_Descriptor *plugin, int port)
 	    return upper;
 	}
 	if (LADSPA_IS_HINT_BOUNDED_BELOW(hint.HintDescriptor)) {
-	    if (LADSPA_IS_HINT_DEFAULT_LOW(hint.HintDescriptor)) {
-		return lower * 0.75f + upper * 0.25f;
-	    } else if (LADSPA_IS_HINT_DEFAULT_MIDDLE(hint.HintDescriptor)) {
-		return lower * 0.5f + upper * 0.5f;
-	    } else if (LADSPA_IS_HINT_DEFAULT_HIGH(hint.HintDescriptor)) {
-		return lower * 0.25f + upper * 0.75f;
+            if (LADSPA_IS_HINT_LOGARITHMIC(hint.HintDescriptor) &&
+                lower > 0.0f && upper > 0.0f) {
+                if (LADSPA_IS_HINT_DEFAULT_LOW(hint.HintDescriptor)) {
+                    return expf(logf(lower) * 0.75f + logf(upper) * 0.25f);
+                } else if (LADSPA_IS_HINT_DEFAULT_MIDDLE(hint.HintDescriptor)) {
+                    return expf(logf(lower) * 0.5f + logf(upper) * 0.5f);
+                } else if (LADSPA_IS_HINT_DEFAULT_HIGH(hint.HintDescriptor)) {
+                    return expf(logf(lower) * 0.25f + logf(upper) * 0.75f);
+                }
+            } else {
+                if (LADSPA_IS_HINT_DEFAULT_LOW(hint.HintDescriptor)) {
+                    return lower * 0.75f + upper * 0.25f;
+                } else if (LADSPA_IS_HINT_DEFAULT_MIDDLE(hint.HintDescriptor)) {
+                    return lower * 0.5f + upper * 0.5f;
+                } else if (LADSPA_IS_HINT_DEFAULT_HIGH(hint.HintDescriptor)) {
+                    return lower * 0.25f + upper * 0.75f;
+                }
 	    }
 	}
     }
@@ -1656,6 +1719,10 @@ osc_update_handler(d3h_instance_t *instance, lo_arg **argv)
     instance->ui_osc_program_path = (char *)malloc(strlen(path) + 10);
     sprintf(instance->ui_osc_program_path, "%s/program", path);
 
+    if (instance->ui_osc_quit_path) free(instance->ui_osc_quit_path);
+    instance->ui_osc_quit_path = (char *)malloc(strlen(path) + 10);
+    sprintf(instance->ui_osc_quit_path, "%s/quit", path);
+
     if (instance->ui_osc_show_path) free(instance->ui_osc_show_path);
     instance->ui_osc_show_path = (char *)malloc(strlen(path) + 10);
     sprintf(instance->ui_osc_show_path, "%s/show", path);
@@ -1711,6 +1778,11 @@ osc_exiting_handler(d3h_instance_t *instance, lo_arg **argv)
     if (verbose) {
 	printf("%s: OSC: got exiting notification for instance %d\n", myName,
 	       instance->number);
+    }
+
+    if (instance->uiTarget) {
+        lo_address_free(instance->uiTarget);
+        instance->uiTarget = NULL;
     }
 
     if (instance->plugin) {
