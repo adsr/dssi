@@ -445,8 +445,10 @@ These are the methods the host may support:
 
   <base path>/configure
   Make a configure() call to the plugin.  Takes two string arguments
-  for key and value.  See the documentation for configure() in dssi.h.
-  (required method)
+  for key and value.  If the key begins with the special prefix
+  GLOBAL:, the same configure call will be made on all plugins in
+  the same instance group, as well as their UIs.  See also the
+  documentation for configure() in dssi.h. (required method)
 
   <base path>/midi
   Send an arbitrary MIDI event to the plugin.  Takes a four-byte MIDI

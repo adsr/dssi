@@ -355,14 +355,32 @@ char *samplerLoad(Sampler *plugin_data, const char *path)
     SNDFILE *file;
     size_t samples = 0;
     float *tmpFrames, *tmpSamples[2], *tmpResamples, *tmpOld[2];
+    char *revisedPath = 0;
     size_t i;
 
     info.format = 0;
     file = sf_open(path, SFM_READ, &info);
 
     if (!file) {
-	return dssi_configure_message
-	    ("error: unable to load sample file '%s'", path);
+
+	const char *filename = strrchr(path, '/');
+	if (filename) ++filename;
+	else filename = path;
+
+	if (*filename && plugin_data->projectDir) {
+	    revisedPath = (char *)malloc(strlen(filename) +
+					 strlen(plugin_data->projectDir) + 2);
+	    sprintf(revisedPath, "%s/%s", plugin_data->projectDir, filename);
+	    file = sf_open(revisedPath, SFM_READ, &info);
+	    if (!file) {
+		free(revisedPath);
+	    }
+	}
+
+	if (!file) {
+	    return dssi_configure_message
+		("error: unable to load sample file '%s'", path);
+	}
     }
     
     if (info.frames > Sampler_FRAMES_MAX) {
@@ -465,6 +483,12 @@ char *samplerLoad(Sampler *plugin_data, const char *path)
 
     printf("%s: loaded %s (%ld samples from original %ld channels resampled from %ld frames at %ld Hz)\n", (plugin_data->channels == 2 ? Sampler_Stereo_LABEL : Sampler_Mono_LABEL), path, (long)samples, (long)info.channels, (long)info.frames, (long)info.samplerate);
 
+    if (revisedPath) {
+	char *message = dssi_configure_message("warning: sample file '%s' not found: loading from '%s' instead", path, revisedPath);
+	free(revisedPath);
+	return message;
+    }
+
     return NULL;
 }
 
@@ -475,6 +499,7 @@ char *samplerConfigure(LADSPA_Handle instance, const char *key, const char *valu
     if (!strcmp(key, "load")) {
 	return samplerLoad(plugin_data, value);
     } else if (!strcmp(key, DSSI_PROJECT_DIRECTORY_KEY)) {
+	if (plugin_data->projectDir) free(plugin_data->projectDir);
 	plugin_data->projectDir = strdup(value);
 	return 0;
     }

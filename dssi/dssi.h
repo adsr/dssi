@@ -35,18 +35,16 @@
 extern "C" {
 #endif
 
-/* Rationale:
-
+/* 
    There is a need for an API that supports hosted MIDI soft synths
-   with GUIs in Linux audio applications.  We hope that in time the
-   GMPI initiative will comprehensively address this need, but the
-   requirement for Linux applications to be able to support simple
-   hosted synths is here now, and GMPI is not.  This proposal (the
-   "Disposable Soft Synth Interface" or DSSI, pronounced "dizzy") aims
-   to provide the simplest possible interim solution in a way that we
-   hope will prove compelling enough to support now, yet not so
-   compelling as to supplant GMPI or any other comprehensive future
-   proposal.
+   with GUIs in Linux audio applications.  In time the GMPI initiative
+   should comprehensively address this need, but the requirement for
+   Linux applications to be able to support simple hosted synths is
+   here now, and GMPI is not.  This proposal (the "DSSI Soft Synth
+   Interface" or DSSI, pronounced "dizzy") aims to provide a simple
+   solution in a way that we hope will prove complete and compelling
+   enough to support now, yet not so compelling as to supplant GMPI or
+   any other comprehensive future proposal.
 
    For simplicity and familiarity, this API is based as far as
    possible on existing work -- the LADSPA plugin API for control
@@ -136,21 +134,42 @@ typedef struct _DSSI_Descriptor {
      * Calling configure() completely invalidates the program and bank
      * information last obtained from the plugin.
      *
-     * The Magic DSSI_PROJECT_DIRECTORY Key
-     * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-     * A host may call configure() with the special magic key
-     * DSSI_PROJECT_DIRECTORY and a directory path value.  This
+     * Reserved and special key prefixes
+     * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+     * The DSSI: prefix
+     * ----------------
+     * Configure keys starting with DSSI: are reserved for particular
+     * purposes documented in the DSSI specification.  At the moment,
+     * there is one such key: DSSI:PROJECT_DIRECTORY.  A host may call
+     * configure() passing this key and a directory path value.  This
      * indicates to the plugin and its UI that a directory at that
      * path exists and may be used for project-local data.  Plugins
      * may wish to use the project directory as a fallback location
      * when looking for other file data, or as a base for relative
      * paths in other configuration values.
+     *
+     * The GLOBAL: prefix
+     * ------------------
+     * Configure keys starting with GLOBAL: may be used by the plugin
+     * and its UI for any purpose, but are treated specially by the
+     * host.  When one of these keys is used in a configure OSC call
+     * from the plugin UI, the host makes the corresponding configure
+     * call (preserving the GLOBAL: prefix) not only to the target
+     * plugin but also to all other plugins in the same instance
+     * group, as well as their UIs.  Note that if any instance
+     * returns non-NULL from configure to indicate error, the host
+     * may stop there (and the set of plugins on which configure has
+     * been called will depend on the host).  See also the configure
+     * OSC call documentation in RFC.txt.
      */
     char *(*configure)(LADSPA_Handle Instance,
 		       const char *Key,
 		       const char *Value);
 
-    #define DSSI_PROJECT_DIRECTORY_KEY "DSSI_PROJECT_DIRECTORY"
+    #define DSSI_RESERVED_CONFIGURE_PREFIX "DSSI:"
+    #define DSSI_GLOBAL_CONFIGURE_PREFIX "GLOBAL:"
+    #define DSSI_PROJECT_DIRECTORY_KEY \
+	DSSI_RESERVED_CONFIGURE_PREFIX "PROJECT_DIRECTORY"
 
     /**
      * get_program()

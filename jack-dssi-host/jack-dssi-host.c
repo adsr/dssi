@@ -1482,29 +1482,52 @@ osc_configure_handler(d3h_instance_t *instance, lo_arg **argv)
     const char *value = (const char *)&argv[1]->s;
     char *message;
 
-    /* This is the simplest legal implementation of configure in a
-     * DSSI host.  The host has the option to remember the set of
-     * (key,value) pairs associated with a particular instance, so
-     * that if it wants to restore the "same" instance on another
-     * occasion it can just call configure() on it for each of those
-     * pairs and so restore state without any input from a GUI.  Any
-     * real-world GUI host will probably want to do that.  This host
-     * doesn't have any concept of restoring an instance from one run
-     * to the next, so we don't bother remembering these at all. */
+    /* This is pretty much the simplest legal implementation of
+     * configure in a DSSI host. */
+
+    /* The host has the option to remember the set of (key,value)
+     * pairs associated with a particular instance, so that if it
+     * wants to restore the "same" instance on another occasion it can
+     * just call configure() on it for each of those pairs and so
+     * restore state without any input from a GUI.  Any real-world GUI
+     * host will probably want to do that.  This host doesn't have any
+     * concept of restoring an instance from one run to the next, so
+     * we don't bother remembering these at all. */
 
     if (instance->plugin->descriptor->configure) {
 
-	message = instance->plugin->descriptor->configure
-                      (instanceHandles[instance->number], key, value);
-        if (message) {
-            printf("jack-dssi-host: on configure '%s' '%s', plugin '%s' returned '%s'\n",
-                   key, value, instance->friendly_name, message);
-            free(message);
-        }
+	int n = instance->number;
+	int m = n;
 
-	/* configure invalidates bank and program information, so
-	   we should do this again now: */
-	query_programs(instance);
+	if (!strncmp(key, DSSI_RESERVED_CONFIGURE_PREFIX,
+		     strlen(DSSI_RESERVED_CONFIGURE_PREFIX))) {
+	    fprintf(stderr, "jack-dssi-host: OSC: UI for plugin '%s' attempted to use reserved configure key \"%s\", ignoring\n", instance->friendly_name, key);
+	    return 0;
+	}
+
+	if (instance->plugin->instances > 1 &&
+	    !strncmp(key, DSSI_GLOBAL_CONFIGURE_PREFIX,
+		     strlen(DSSI_GLOBAL_CONFIGURE_PREFIX))) {
+	    while (n > 0 && instances[n-1].plugin == instances[m].plugin) --n;
+	    m = n + instances[n].plugin->instances - 1;
+	}
+	
+	while (n <= m) {
+
+	    message = instances[n].plugin->descriptor->configure
+		(instanceHandles[n], key, value);
+	    if (message) {
+		printf("jack-dssi-host: on configure '%s' '%s', plugin '%s' returned '%s'\n",
+		       key, value, instance->friendly_name, message);
+		free(message);
+	    }
+
+	    /* configure invalidates bank and program information, so
+	       we should do this again now: */
+	    query_programs(&instances[n]);
+
+	    ++n;
+	}	    
     }
 
     return 0;
