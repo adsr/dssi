@@ -852,7 +852,7 @@ int osc_update_handler(const char *path, const char *types, lo_arg **argv, int a
     gui_osc_program_path = (char *)malloc(strlen(path) + 10);
     sprintf(gui_osc_program_path, "%s/program", path);
 
-    free(path);
+    free((char *)path);
 
     for (i=0; i<controlIns; i++) {
 	int port = pluginControlInPortNumbers[i];
