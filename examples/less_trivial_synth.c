@@ -335,7 +335,7 @@ static void run_voice(LTS *p, synth_vals *vals, voice_data *d, LADSPA_Data *out,
 	    break;
 
 	default:
-	    MB_MESSAGE("state error! (%d)\n", d->state);
+//	    MB_MESSAGE("state error! (%d)\n", d->state);
 	    d->state = inactive;
 	    break;
 	}
@@ -383,7 +383,7 @@ int pick_voice(const voice_data *data)
 	}
     }
 
-    MB_MESSAGE("run out of voices, dropping one\n");
+//    MB_MESSAGE("run out of voices, dropping one\n");
 
     return highest_note_voice;
 }
@@ -396,7 +396,7 @@ void _init()
     LADSPA_PortDescriptor *port_descriptors;
     LADSPA_PortRangeHint *port_range_hints;
 
-    mb_init("LTS: ");
+//    mb_init("LTS: ");
 
     sin_table = malloc(sizeof(float) * TABLE_SIZE);
     for (i=0; i<TABLE_SIZE; i++) {
