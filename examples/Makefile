@@ -1,4 +1,6 @@
 
+PREFIX	:= /usr/local
+
 TARGETS = \
 	dssi_example_host \
 	trivial_synth.so \
@@ -9,6 +11,15 @@ TARGETS = \
 	less_trivial_synth/LTS_qt
 
 all: $(TARGETS)
+
+install: all
+	mkdir -p $(PREFIX)/bin
+	cp dssi_example_host dssi_osc_update dssi_osc_send $(PREFIX)/bin/
+	mkdir -p $(PREFIX)/lib/dssi
+	cp trivial_synth.so $(PREFIX)/lib/dssi/
+	mkdir -p $(PREFIX)/lib/dssi/less_trivial_synth
+	cp less_trivial_synth.so $(PREFIX)/lib/dssi/
+	cp less_trivial_synth_qt_gui $(PREFIX)/lib/dssi/less_trivial_synth/LTS_qt
 
 CFLAGS = -Wall -g3 -I../dssi $(shell pkg-config liblo --cflags)
 CXXFLAGS = $(CFLAGS) -I$(QTDIR)/include
