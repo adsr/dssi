@@ -56,7 +56,7 @@ int main()
 	return 1;
     }
 
-    printf("passed\n");
+    printf("test passed\n");
 
     return 0;
 }
