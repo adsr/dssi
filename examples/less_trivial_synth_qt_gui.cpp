@@ -193,8 +193,8 @@ void
 osc_error(int num, const char *msg, const char *path)
 {
     cerr << "Error: liblo server error " << num
-	 << " in path " << path
-	 << ": " << msg << endl;
+	 << " in path \"" << (path ? path : "(null)")
+	 << "\": " << msg << endl;
 }
 
 int
