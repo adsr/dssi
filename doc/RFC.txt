@@ -1,0 +1,148 @@
+
+
+Request for comments: Disposable Soft Synth Interface (DSSI)
+============================================================
+
+Background and Requirements
+---------------------------
+
+One of the biggest barriers to the acceptance of Linux audio software
+as a direct alternative to mainstream sequencer applications for other
+platforms is the lack of a comparable way to operate software synth
+plugins.  There is an immediate need for an API that permits synth
+plugins to be written to a simple standard and then used in a range of
+host applications.
+
+This is an awkward situation, because it is hoped that the forthcoming
+GMPI initiative will comprehensively address the needs of soft synths
+in a flexible cross-platform way.  But the requirement for Linux
+applications to be able to support simple hosted synths is here now,
+and GMPI is not.  Thus, we need to provide the simplest possible
+interim solution in a way that will prove compelling enough to support
+now, yet not so compelling as to supplant GMPI or any other
+comprehensive future proposal.  Hence this RFC: the Disposable Soft
+Synth Interface, or DSSI (pronounced "dizzy").
+
+Because of the conservative nature of this proposal, the main
+requirements are:
+
+  (1) To support the basic facilities that users and developers
+  familiar with mainstream software on other platforms will expect to
+  find in a Linux alternative: the ability to take a synth plugin
+  with a cute GUI and to direct MIDI (from e.g. a sequencer track)
+  to it, automate its controls, and route the output appropriately.
+  Note that there is an emphasis on MIDI throughout this discussion.
+
+  (2) To address certain specific limitations of other methods of
+  running MIDI soft synths on Linux.  These limitations are discussed
+  below.
+
+  (3) To take advantage of existing work as much as possible.
+
+
+Existing Techniques
+-------------------
+
+There are of course ways to run MIDI soft synths on Linux already, as
+well as some other initiatives that address parts of the same problem
+as this one.
+
+* ALSA sequencer input + JACK output (the "standalone soft synth")
+
+Most existing Linux soft synths operate as standalone applications
+that wait for MIDI events on an ALSA sequencer port and generate audio
+to JACK outputs.  This is an attractively flexible solution, because
+such applications are by definition routeable in the same way as any
+other MIDI devices and JACK clients.  For some synths, particularly
+larger ones with significant amounts of internal configuration state,
+this may actually be a very effective way to work.
+
+Unfortunately routing only the MIDI and audio streams is not usually
+enough, especially for smaller dedicated synths.  The applications
+wanting to route to a synth need more information about it than is
+actually available in this way.  For example, it is impossible to
+identify that an ALSA application is in fact a synth, or discover its
+available programs or controller settings; there is no reliable way to
+associate the synth's inputs with its outputs in order to route both
+ends at once; and it is extremely hard to manage multiple instances.
+Also the use of the ALSA sequencer layer to deliver incoming events
+means that they can't be timed to exact sample frames.  All of these
+are limitations which the present proposal needs to address.
+
+* MIDI-over-JACK
+
+An extension has been proposed to the JACK framework to permit MIDI
+events to be sent via JACK.  If used to drive a conventional soft
+synth, this would fully address the timing problem that exists in the
+ALSA sequencer method, but not any of its other limitations.
+
+* LADSPA
+
+The existing Linux plugin standard can't easily be used for MIDI soft
+synths, because there is no way to pass MIDI or MIDI-like data to a
+plugin.  (A plugin could open its own ALSA sequencer input, but that
+is complex and carries the same timing limitation as discussed above.)
+There is also no toolkit-agnostic standard way to provide a GUI with a
+LADSPA plugin.
+
+* libsynti
+
+The MusE sequencer has an API for hosting soft synths, known as
+libsynti.  It is probably the closest alternative to the present
+proposal, it addresses many of the same problems, and it is an
+attractively small API.  Unfortunately it is unlikely to be popular as
+a standard for Linux audio plugins, simply because it is in C++ and
+requires Qt for plugin GUIs.
+
+* VSTi
+
+Mentioned for completeness.  The licensing for the VST SDK is not at
+all compatible with the GPL or any other free-software license, which
+is one reason why LADSPA exists.  Also VSTi is complex to implement
+correctly, hard to automate, and in the context of a Linux GUI toolkit
+it would not readily solve the GUI problem.  The attractiveness of the
+fact that there are many plugins already available is diminished by
+the fact that their source is usually not, so they can't be rebuilt
+for Linux except by their authors.
+
+
+The DSSI Proposal
+-----------------
+
+* Define a DSSI plugin as a wrapper for a LADSPA plugin, which is to
+  be used for all control and audio data.  (Thus taking advantage of
+  the existing widespread awareness of how LADSPA works, as well as
+  functioning mechanisms for handling controls, instantiation etc.)
+
+* Provide additional mechanisms for querying and changing programs,
+  mapping MIDI controllers to LADSPA control ports, and running a
+  synth with a set of frame-timestamped MIDI events using the existing
+  ALSA sequencer event type struct.  (Thus ensuring timing correctness
+  and enabling the host to query the various additional bits of
+  non-MIDI non-audio information it needs.)
+
+* Make the plugin GUI a separate standalone program, that communicates
+  with the host (_not_ directly with the plugin) via Open Sound Control
+  messages.  (Thus ducking out of the GUI toolkit compatibility
+  question altogether, ensuring that the plugin is always correctly
+  automatable by the host, and in principle permitting plugins to be
+  controlled by other OSC clients as well.)
+
+Further details are documented liberally in the dssi.h header.
+
+
+"Project Plan"
+--------------
+
+ 1. Think of an API.
+
+ 2. Test it to make sure it's not totally stupid.
+
+ Iterate for a bit between 1 and 2 until it's clear that total
+ stupidity is no longer in the air.
+
+ 3. Take it to LAD and see how well it goes down.  If it looks as
+ though a workable consensus based on this proposal can be reached,
+ then try to reach it and get some implementations done.  Otherwise
+ reframe or abandon.
+

@@ -174,8 +174,8 @@ typedef struct _DSSI_Descriptor {
 
     /**
      * This member is a function pointer that returns the MIDI
-     * controller number that should be mapped to the given input
-     * control port.  If the given port should not have any MIDI
+     * controller number or NRPN that should be mapped to the given
+     * input control port.  If the given port should not have any MIDI
      * controller mapped to it, the function should return DSSI_NONE.
      * The behaviour of this function is undefined if the given port
      * number does not correspond to an input control port.  A plugin
@@ -184,14 +184,14 @@ typedef struct _DSSI_Descriptor {
      *
      * Correct values can be got using the macros DSSI_CC(num) and
      * DSSI_NRPN(num) as appropriate, and values can be combined using
-     * logical or, eg DSSI_CC(23) | DSSI_NRPN(1069) should respond
-     * to CC #23 and NRPN #1069.
+     * bitwise OR: e.g. DSSI_CC(23) | DSSI_NRPN(1069) means the port
+     * should respond to CC #23 and NRPN #1069.
      *
      * The host is responsible for doing proper scaling from MIDI
-     * controller values to port ranges according to the plugin's
-     * LADSPA port hints.  Hosts should not deliver through run_synth
-     * any MIDI controller events that have already been mapped to
-     * control port values.
+     * controller and NRPN value ranges to port ranges according to
+     * the plugin's LADSPA port hints.  Hosts should not deliver
+     * through run_synth any MIDI controller events that have already
+     * been mapped to control port values.
      *
      * A plugin should not attempt to request mappings from
      * controllers 0 or 32 (MIDI Bank Select MSB and LSB).
@@ -262,7 +262,7 @@ const DSSI_Descriptor *dssi_descriptor(unsigned long Index);
 typedef const DSSI_Descriptor *(*DSSI_Descriptor_Function)(unsigned long Index);
 
 /*
- * Macros to specify particular MIDI controlers in return values from
+ * Macros to specify particular MIDI controllers in return values from
  * get_midi_controller_for_port()
  */
 
