@@ -36,6 +36,7 @@ public slots:
     void setDecay  (float sec);
     void setSustain(float percent);
     void setRelease(float sec);
+    void setTimbre (float val);
 
 protected slots:
     void tuningChanged (int);
@@ -43,6 +44,7 @@ protected slots:
     void decayChanged  (int);
     void sustainChanged(int);
     void releaseChanged(int);
+    void timbreChanged (int);
 
 protected:
     QDial *m_tuning;
@@ -50,12 +52,14 @@ protected:
     QDial *m_decay;
     QDial *m_sustain;
     QDial *m_release;
+    QDial *m_timbre;
 
     QLabel *m_tuningLabel;
     QLabel *m_attackLabel;
     QLabel *m_decayLabel;
     QLabel *m_sustainLabel;
     QLabel *m_releaseLabel;
+    QLabel *m_timbreLabel;
 
     lo_address m_host;
     QString m_path;

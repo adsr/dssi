@@ -24,6 +24,7 @@ using std::endl;
 #define LTS_PORT_DECAY   3
 #define LTS_PORT_SUSTAIN 4
 #define LTS_PORT_RELEASE 5
+#define LTS_PORT_TIMBRE  6
 
 
 SynthGUI::SynthGUI(char *host, char *port, char *path, QWidget *w) :
@@ -40,42 +41,49 @@ SynthGUI::SynthGUI(char *host, char *port, char *path, QWidget *w) :
     m_decay   = new QDial(  1, 100,  1,  25, this); // s * 100
     m_sustain = new QDial(  0, 100,  1,  75, this); // %
     m_release = new QDial(  1, 400, 10, 200, this); // s * 100
+    m_timbre  = new QDial(  1, 100,  1,  25, this); // s * 100
     
     m_tuning ->setNotchesVisible(true);
     m_attack ->setNotchesVisible(true);
     m_decay  ->setNotchesVisible(true);
     m_sustain->setNotchesVisible(true);
     m_release->setNotchesVisible(true);
+    m_timbre ->setNotchesVisible(true);
 
     m_tuningLabel  = new QLabel(this);
     m_attackLabel  = new QLabel(this);
     m_decayLabel   = new QLabel(this);
     m_sustainLabel = new QLabel(this);
     m_releaseLabel = new QLabel(this);
+    m_timbreLabel  = new QLabel(this);
     
     layout->addWidget(new QLabel("Pitch of A", this), 0, 0, Qt::AlignCenter);
     layout->addWidget(new QLabel("Attack",     this), 0, 1, Qt::AlignCenter);
     layout->addWidget(new QLabel("Decay",      this), 0, 2, Qt::AlignCenter);
     layout->addWidget(new QLabel("Sustain",    this), 0, 3, Qt::AlignCenter);
     layout->addWidget(new QLabel("Release",    this), 0, 4, Qt::AlignCenter);
+    layout->addWidget(new QLabel("Timbre",     this), 0, 5, Qt::AlignCenter);
     
     layout->addWidget(m_tuning,  1, 0);
     layout->addWidget(m_attack,  1, 1);
     layout->addWidget(m_decay,   1, 2);
     layout->addWidget(m_sustain, 1, 3);
     layout->addWidget(m_release, 1, 4);
+    layout->addWidget(m_timbre,  1, 5);
     
     layout->addWidget(m_tuningLabel,  2, 0, Qt::AlignCenter);
     layout->addWidget(m_attackLabel,  2, 1, Qt::AlignCenter);
     layout->addWidget(m_decayLabel,   2, 2, Qt::AlignCenter);
     layout->addWidget(m_sustainLabel, 2, 3, Qt::AlignCenter);
     layout->addWidget(m_releaseLabel, 2, 4, Qt::AlignCenter);
+    layout->addWidget(m_timbreLabel,  2, 5, Qt::AlignCenter);
 
     connect(m_tuning,  SIGNAL(valueChanged(int)), this, SLOT(tuningChanged(int)));
     connect(m_attack,  SIGNAL(valueChanged(int)), this, SLOT(attackChanged(int)));
     connect(m_decay,   SIGNAL(valueChanged(int)), this, SLOT(decayChanged(int)));
     connect(m_sustain, SIGNAL(valueChanged(int)), this, SLOT(sustainChanged(int)));
     connect(m_release, SIGNAL(valueChanged(int)), this, SLOT(releaseChanged(int)));
+    connect(m_timbre,  SIGNAL(valueChanged(int)), this, SLOT(timbreChanged(int)));
 
     // cause some initial updates
     tuningChanged (m_tuning ->value());
@@ -83,6 +91,7 @@ SynthGUI::SynthGUI(char *host, char *port, char *path, QWidget *w) :
     decayChanged  (m_decay  ->value());
     sustainChanged(m_sustain->value());
     releaseChanged(m_release->value());
+    timbreChanged (m_timbre ->value());
 
     m_suppressHostUpdate = false;
 }
@@ -124,6 +133,14 @@ SynthGUI::setRelease(float sec)
 {
     m_suppressHostUpdate = true;
     m_release->setValue(int(sec * 100));
+    m_suppressHostUpdate = false;
+}
+
+void
+SynthGUI::setTimbre(float val)
+{
+    m_suppressHostUpdate = true;
+    m_timbre->setValue(int(val * 100));
     m_suppressHostUpdate = false;
 }
 
@@ -180,6 +197,17 @@ SynthGUI::releaseChanged(int value)
 
     if (!m_suppressHostUpdate) {
 	lo_send(m_host, m_path, "if", LTS_PORT_RELEASE, sec);
+    }
+}
+
+void
+SynthGUI::timbreChanged(int value)
+{
+    float val = float(value) / 100.0;
+    m_releaseLabel->setText(QString("%1").arg(val));
+
+    if (!m_suppressHostUpdate) {
+	lo_send(m_host, m_path, "if", LTS_PORT_TIMBRE, val);
     }
 }
 
@@ -254,6 +282,11 @@ update_handler(const char *path, const char *types, lo_arg **argv,
     case LTS_PORT_RELEASE:
 	cerr << "gui setting release to " << value << endl;
 	gui->setRelease(value);
+	break;
+
+    case LTS_PORT_TIMBRE:
+	cerr << "gui setting timbre to " << value << endl;
+	gui->setTimbre(value);
 	break;
 
     default:

@@ -21,6 +21,7 @@
 #include "dssi.h"
 #include "ladspa.h"
 #include "message_buffer.h"
+#include "saw.h"
 
 #define LTS_OUTPUT  0
 #define LTS_FREQ    1
@@ -28,9 +29,10 @@
 #define LTS_DECAY   3
 #define LTS_SUSTAIN 4
 #define LTS_RELEASE 5
-#define LTS_COUNT   6 /* must be 1 + highest value above */
+#define LTS_TIMBRE  6
+#define LTS_COUNT   7 /* must be 1 + highest value above */
 
-#define POLYPHONY   24
+#define POLYPHONY   74
 #define MIDI_NOTES  128
 #define STEP_SIZE   16
 
@@ -51,7 +53,7 @@ long int lrintf (float x);
 static LADSPA_Descriptor *ltsLDescriptor = NULL;
 static DSSI_Descriptor *ltsDDescriptor = NULL;
 
-float table[TABLE_SIZE];
+float *table[2];
 
 typedef enum {
     inactive = 0,
@@ -86,6 +88,7 @@ typedef struct {
     LADSPA_Data decay;
     LADSPA_Data sustain;
     LADSPA_Data release;
+    LADSPA_Data timbre;
     LADSPA_Data pitch;
 } synth_vals;
 
@@ -96,6 +99,7 @@ typedef struct {
     LADSPA_Data *decay;
     LADSPA_Data *sustain;
     LADSPA_Data *release;
+    LADSPA_Data *timbre;
     LADSPA_Data pitch;
     voice_data data[POLYPHONY];
     int note2voice[MIDI_NOTES];
@@ -161,6 +165,9 @@ static void connectPortLTS(LADSPA_Handle instance, unsigned long port,
     case LTS_RELEASE:
 	plugin->release = data;
 	break;
+    case LTS_TIMBRE:
+	plugin->timbre = data;
+	break;
     }
 }
 
@@ -223,6 +230,7 @@ static void runLTS(LADSPA_Handle instance, unsigned long sample_count,
     vals.pitch = plugin_data->pitch;
 
     for (pos = 0, event_pos = 0; pos < sample_count; pos += STEP_SIZE) {
+	vals.timbre = LERP(0.99f, vals.timbre, *(plugin_data->timbre));
 	while (event_pos < event_count
 	       && pos >= events[event_pos].time.tick) {
 	    if (events[event_pos].type == SND_SEQ_EVENT_NOTEON) {
@@ -233,7 +241,8 @@ static void runLTS(LADSPA_Handle instance, unsigned long sample_count,
 
 		    plugin_data->note2voice[n.note] = voice;
 		    data[voice].note = n.note;
-		    data[voice].amp = n.velocity * GLOBAL_GAIN / 127.0f;
+		    data[voice].amp = sqrtf(n.velocity * .0078740157f) *
+				      GLOBAL_GAIN;
 		    data[voice].state = attack;
 		    data[voice].env = 0.0;
 		    data[voice].env_d = 1.0f / vals.attack;
@@ -289,8 +298,12 @@ static void run_voice(LTS *p, synth_vals *vals, voice_data *d, LADSPA_Data *out,
 	d->phase.all += lrintf((float)p->omega[d->note].all * vals->tune *
 				vals->pitch);
 	d->env += d->env_d;
-	out[i] += LERP(FP_FR(d->phase), table[FP_IN(d->phase)],
-		     table[FP_IN(d->phase) + 1]) * d->amp * d->env;
+	out[i] += LERP(vals->timbre,
+		       LERP(FP_FR(d->phase), table[0][FP_IN(d->phase)],
+			    table[0][FP_IN(d->phase) + 1]),
+		       LERP(FP_FR(d->phase), table[1][FP_IN(d->phase)],
+			    table[1][FP_IN(d->phase) + 1])) *
+		  d->amp * d->env;
     }
 
     d->counter += count;
@@ -340,6 +353,8 @@ int getControllerLTS(LADSPA_Handle instance, unsigned long port)
         return DSSI_CC(0x4f);
     case LTS_RELEASE:
         return DSSI_CC(0x48);
+    case LTS_TIMBRE:
+        return DSSI_CC(0x01);
     }
 
     return DSSI_NONE;
@@ -377,14 +392,18 @@ void _init()
 {
     unsigned int i;
     char **port_names;
+    float *sin_table;
     LADSPA_PortDescriptor *port_descriptors;
     LADSPA_PortRangeHint *port_range_hints;
 
     mb_init("LTS: ");
 
+    sin_table = malloc(sizeof(float) * TABLE_SIZE);
     for (i=0; i<TABLE_SIZE; i++) {
-	table[i] = sin(2.0 * M_PI * (double)i / (double)TABLE_MODULUS);
+	sin_table[i] = sin(2.0 * M_PI * (double)i / (double)TABLE_MODULUS);
     }
+    table[0] = sin_table;
+    table[1] = saw_table;
 
     ltsLDescriptor =
 	(LADSPA_Descriptor *) malloc(sizeof(LADSPA_Descriptor));
@@ -463,6 +482,15 @@ void _init()
 			port_range_hints[LTS_ATTACK].LowerBound;
 	port_range_hints[LTS_RELEASE].UpperBound =
 			port_range_hints[LTS_ATTACK].UpperBound * 4.0f;
+
+	/* Parameters for timbre */
+	port_descriptors[LTS_TIMBRE] = port_descriptors[LTS_ATTACK];
+	port_names[LTS_TIMBRE] = "Timbre";
+	port_range_hints[LTS_TIMBRE].HintDescriptor =
+			LADSPA_HINT_DEFAULT_MIDDLE |
+			LADSPA_HINT_BOUNDED_BELOW | LADSPA_HINT_BOUNDED_ABOVE;
+	port_range_hints[LTS_TIMBRE].LowerBound = 0.0f;
+	port_range_hints[LTS_TIMBRE].UpperBound = 1.0f;
 
 	ltsLDescriptor->activate = activateLTS;
 	ltsLDescriptor->cleanup = cleanupLTS;
