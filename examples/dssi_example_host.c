@@ -63,6 +63,7 @@ lo_server_thread serverThread;
 lo_target uiTarget;
 static char *gui_osc_control_path = 0;
 static char *gui_osc_program_path = 0;
+static char *gui_osc_show_path = 0;
 
 static sigset_t _signals;
 
@@ -991,6 +992,7 @@ int osc_update_handler(const char *path, const char *types, lo_arg **argv, int a
     const char *url = (char *)&argv[0]->s;
     unsigned int i;
     char *host, *port;
+    static int first_update = 1; /* should be per-UI, but we only support one */
 
     printf("dssi_example_host: OSC: got update request from <%s>\n", url);
 
@@ -1010,11 +1012,20 @@ int osc_update_handler(const char *path, const char *types, lo_arg **argv, int a
     gui_osc_program_path = (char *)malloc(strlen(path) + 10);
     sprintf(gui_osc_program_path, "%s/program", path);
 
+    if (gui_osc_show_path) free(gui_osc_show_path);
+    gui_osc_show_path = (char *)malloc(strlen(path) + 10);
+    sprintf(gui_osc_show_path, "%s/show", path);
+
     free((char *)path);
 
     for (i=0; i<controlIns; i++) {
 	int port = pluginControlInPortNumbers[i];
 	lo_send(uiTarget, gui_osc_control_path, "if", port, pluginControlIns[i]);
+    }
+
+    if (first_update) {
+	lo_send(uiTarget, gui_osc_show_path, "");
+	first_update = 0;
     }
 
     return 0;

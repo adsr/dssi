@@ -231,9 +231,11 @@ consisting of:
   * the name of the .so in which the plugin was found (here PLUGINS.so)
   * the label of the plugin (here PLUGIN).
 
-The UI then requests an update, passing its own OSC URL and base path
-to the host; the host responds by sending the current values of all
-the ports, and startup is complete.
+If the UI supports the show/hide mechanism (which any graphical UI
+should), then it should initially be in hidden state.  The UI then
+requests an update, passing its own OSC URL and base path to the host;
+the host responds by sending the current values of all the ports.  The
+host must then call show() on the UI and startup is complete.
 
 3. Paths and Methods
 
@@ -293,4 +295,19 @@ And these are the methods the UI may support:
   Update the UI from an automated program change.  Takes an int
   argument for bank number and int for value.  (required method if
   the plugin supports program changes)
+
+  <base path>/show
+  Show the UI, if it's a graphical interface in a window or some
+  other type that it makes sense to show or hide.  No arguments.
+  (optional method, but it would be bad form to implement a GUI
+  without it)
+
+  <base path>/hide
+  Hide the UI, if it's a graphical interface in a window or some
+  other type that it makes sense to show or hide.  No arguments.
+  (optional method, but it would be bad form to implement a GUI
+  without it)
+
+  <base path>/quit
+  Exit the UI.  (required method)
 
