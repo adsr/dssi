@@ -474,6 +474,8 @@ load(const char *dllName, void **dll, int quiet) /* returns directory where dll 
 
     while ((element = strtok(path, ":")) != 0) {
 
+	char *filePath;
+
 	path = 0;
 
 	if (element[0] != '/') {
@@ -487,7 +489,7 @@ load(const char *dllName, void **dll, int quiet) /* returns directory where dll 
 	    fprintf(stderr, "%s: Looking for library \"%s\" in %s... ", myName, dllName, element);
 	}
 
-	char *filePath = (char *)malloc(strlen(element) + strlen(dllName) + 2);
+	filePath = (char *)malloc(strlen(element) + strlen(dllName) + 2);
 	sprintf(filePath, "%s/%s", element, dllName);
 
 	if ((handle = dlopen(filePath, RTLD_NOW))) {  /* real-time programs should not use RTLD_LAZY */
@@ -688,6 +690,7 @@ main(int argc, char **argv)
     char *url;
     int i, reps, j;
     int in, out, controlIn, controlOut;
+    char clientName[33];
 
     setsid();
     sigemptyset (&_signals);
@@ -970,7 +973,6 @@ main(int argc, char **argv)
 
     /* Create buffers and JACK client and ports */
 
-    char clientName[33];
     if (instance_count > 1) strcpy(clientName, "jack-dssi-host");
     else {
 	strncpy(clientName, plugin->descriptor->LADSPA_Plugin->Name, 32);
@@ -1302,9 +1304,9 @@ main(int argc, char **argv)
 
 	for (i = 0; i < controlInsTotal; ++i) {
 	    if (pluginPortUpdated[i]) {
-                instance = pluginControlInInstances[i];
 		int port = pluginControlInPortNumbers[i];
 		float value = pluginControlIns[i];
+                instance = pluginControlInInstances[i];
 		pluginPortUpdated[i] = 0;
 		if (instance->uiTarget) {
 		    lo_send(instance->uiTarget, instance->ui_osc_control_path, "if", port, value);

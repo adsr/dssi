@@ -446,8 +446,8 @@ char *samplerLoad(Sampler *plugin_data, const char *path)
 	}
     } else {
 	for (i = 0; i < samples; ++i) {
-	    tmpSamples[0][i] = 0.0f;
 	    int j;
+	    tmpSamples[0][i] = 0.0f;
 	    for (j = 0; j < info.channels; ++j) {
 		tmpSamples[0][i] += tmpFrames[i * info.channels + j];
 	    }
