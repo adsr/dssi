@@ -195,7 +195,7 @@ setControl(d3h_instance_t *instance, long controlIn, snd_seq_event_t *event)
 	    value = lb + value;
 	} else {
 	    /* bounded both ends.  more interesting. */
-	    if (!LADSPA_IS_HINT_LOGARITHMIC(d)) {
+	    if (LADSPA_IS_HINT_LOGARITHMIC(d)) {
 		const float llb = logf(lb);
 		const float lub = logf(ub);
 
