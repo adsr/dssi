@@ -277,6 +277,13 @@ program_handler(const char *path, const char *types, lo_arg **argv,
 }
 
 int
+configure_handler(const char *path, const char *types, lo_arg **argv,
+		  int argc, void *data, void *user_data)
+{
+    return 0;
+}
+
+int
 show_handler(const char *path, const char *types, lo_arg **argv,
 	     int argc, void *data, void *user_data)
 {
@@ -389,6 +396,7 @@ main(int argc, char **argv)
 
     QString myControlPath = QString("%1/control").arg(path);
     QString myProgramPath = QString("%1/program").arg(path);
+    QString myConfigurePath = QString("%1/configure").arg(path);
     QString myShowPath = QString("%1/show").arg(path);
     QString myHidePath = QString("%1/hide").arg(path);
     QString myExitPath = QString("%1/quit").arg(path);
@@ -396,6 +404,7 @@ main(int argc, char **argv)
     lo_server_thread thread = lo_server_thread_new(NULL, osc_error);
     lo_server_thread_add_method(thread, myControlPath, "if", control_handler, &gui);
     lo_server_thread_add_method(thread, myProgramPath, "if", program_handler, &gui);
+    lo_server_thread_add_method(thread, myConfigurePath, "ss", configure_handler, &gui);
     lo_server_thread_add_method(thread, myShowPath, "", show_handler, &gui);
     lo_server_thread_add_method(thread, myHidePath, "", hide_handler, &gui);
     lo_server_thread_add_method(thread, myExitPath, "", exit_handler, &gui);

@@ -1045,6 +1045,12 @@ int osc_update_handler(const char *path, const char *types, lo_arg **argv, int a
 	first_update = 0;
     }
 
+    /* At this point a more substantial host might also call
+       configure() on the UI to set any state that it had remembered
+       for the plugin instance.  But we don't remember state for
+       plugin instances (see our own configure() implementation in
+       osc_configure_handler), and so we have nothing to send. */
+
     return 0;
 }
 

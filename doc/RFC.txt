@@ -295,18 +295,26 @@ And these are the methods the UI may support:
   Update the UI from an automated program change.  Takes an int
   argument for bank number and int for value.  (required method if
   the plugin supports program changes)
+  
+  <base path>/configure
+  Used to notify a UI of the current configure state of the plugin.
+  If the host has set any configure data on the plugin at startup
+  (as remembered from a previous invocation), it will call this
+  function once for each piece of configuration data following the
+  UI's update() request, e.g. on startup.  Takes two string arguments
+  for key and value.  (required method)
 
   <base path>/show
   Show the UI, if it's a graphical interface in a window or some
   other type that it makes sense to show or hide.  No arguments.
-  (optional method, but it would be bad form to implement a GUI
-  without it)
+  (optional method for UIs in general, but it would be bad form
+  to implement a graphical UI without it)
 
   <base path>/hide
   Hide the UI, if it's a graphical interface in a window or some
   other type that it makes sense to show or hide.  No arguments.
-  (optional method, but it would be bad form to implement a GUI
-  without it)
+  (optional method for UIs in general, but it would be bad form
+  to implement a graphical UI without it)
 
   <base path>/quit
   Exit the UI.  (required method)
