@@ -156,13 +156,15 @@ sequencer or other plugin host application.
    control interface for plugins using the industry standard OSC --
    which is a pretty good thing to have anyway.
 
- * Existing plugin support
+ * Best chance as a workable standard
 
-   There aren't very many DSSI plugins available at the time of
-   writing -- hardly surprising, as it's a new API just approaching
-   its 1.0 release -- but the example distribution alone contains more
-   useful plugins than are available for any of the alternative Linux
-   synth plugin APIs.
+   The options for plugin synth support in a Free Software MIDI
+   application are limited, and DSSI is the only one we know of that
+   even has a written specification.  While there aren't very many
+   DSSI plugins available at the time of writing -- hardly surprising,
+   as it's still a new API -- the example distribution alone already
+   contains more useful plugins than are available for any of the
+   alternatives.
 
  * Free VST support
 
