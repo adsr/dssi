@@ -1,3 +1,9 @@
+
+/* message_buffer.h
+
+   This file is in the public domain.
+*/
+
 #ifndef MESSAGE_BUFFER_H
 #define MESSAGE_BUFFER_H
 

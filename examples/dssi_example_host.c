@@ -2,7 +2,7 @@
 
 /* dssi_example_host.c
 
-   Disposable Soft Synth Interface version 0.1
+   Disposable Soft Synth Interface
    Constructed by Chris Cannam and Steve Harris
 
    This is an example DSSI host.  It listens for MIDI events on an

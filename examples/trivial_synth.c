@@ -2,7 +2,7 @@
 
 /* trivial_synth.c
 
-   Disposable Hosted Soft Synth API version 0.1
+   Disposable Hosted Soft Synth API
    Constructed by Chris Cannam and Steve Harris
 
    This is an example DSSI synth plugin written by Steve Harris.
