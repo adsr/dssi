@@ -3,6 +3,9 @@
 Request for comments: Disposable Soft Synth Interface (DSSI)
 ============================================================
 
+version 0.4
+-----------
+
 Summary
 -------
 
@@ -121,10 +124,10 @@ solving the timing problem.  Unfortunately none of this addresses the
 problem of discovering synths and the available configurations of
 those synths in the first place.
 
-* libsynti
+* M.E.S.S.
 
 The MusE sequencer has an API for hosting soft synths, known as
-libsynti.  It is probably the closest alternative to the present
+M.E.S.S.  It is probably the closest alternative to the present
 proposal, it addresses many of the same problems, it is working now,
 and it is an attractively small API.  Unfortunately it is unlikely to
 be popular as a standard for Linux audio plugins, simply because it is
@@ -380,10 +383,10 @@ consisting of:
 
 If the UI supports the show/hide mechanism (which any graphical UI
 should), then it should initially be in hidden state.  The UI then
-requests an update, passing its own OSC URL and base path to the
-host; the host responds by sending the current configure, program
-and control values.  The host must then call show() on the UI
-and startup is complete.
+requests an update, passing its own OSC URL and base path to the host;
+the host responds by sending the current configure, program and
+control values (in that order).  The host must then call show() on the
+UI and startup is complete.
 
 3. Paths and Methods
 
@@ -442,7 +445,8 @@ These are the methods the host may support:
 And these are the methods the UI may support:
 
   <base path>/control
-  Update the UI from an automated control change.  Takes an int
+  Update the UI from an automated input control port change, or
+  from an observed change to an output control port.  Takes an int
   argument for port number and float for value.  (required method)
 
   <base path>/program

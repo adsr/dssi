@@ -2,7 +2,7 @@
 
 /* dssi.h
 
-   Disposable Soft Synth Interface version 0.3
+   Disposable Soft Synth Interface version 0.4
    Copyright (c) 2004 Chris Cannam, Steve Harris and Sean Bolton
    
    This library is free software; you can redistribute it and/or
@@ -118,11 +118,9 @@ typedef struct _DSSI_Descriptor {
      * This call is intended to set some session-scoped aspect of a
      * plugin's behaviour, for example to tell the plugin to load
      * sample data from a particular file.  The plugin should act
-     * immediately on the request.  The return value may be delivered
-     * to the GUI, shown to the user, or delivered elsewhere,
-     * depending on which agent requested this configuration change:
-     * the host does not interpret it, but will free it after use if
-     * it is non-NULL.
+     * immediately on the request.  The call should return NULL on
+     * success, or an error string that may be shown to the user.  The
+     * host will free the returned value after use if it is non-NULL.
      *
      * Calls to configure() are not automated as timed events.
      * Instead, a host should remember the last value associated with
