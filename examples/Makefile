@@ -60,9 +60,9 @@ less_trivial_synth/LTS_qt: less_trivial_synth_qt_gui
 	mkdir -p less_trivial_synth
 	cp less_trivial_synth_qt_gui less_trivial_synth/LTS_qt
 
-trivial_sampler_qt_gui.o:	trivial_sampler_qt_gui.h
+trivial_sampler_qt_gui.o:	trivial_sampler_qt_gui.h trivial_sampler.h
 
-trivial_sampler_qt_gui.moc.cpp:	trivial_sampler_qt_gui.h
+trivial_sampler_qt_gui.moc.cpp:	trivial_sampler_qt_gui.h trivial_sampler.h
 	$(MOC) $< > $@
 
 trivial_sampler_qt_gui: trivial_sampler_qt_gui.o trivial_sampler_qt_gui.moc.o
@@ -74,6 +74,8 @@ trivial_sampler/trivial_sampler_qt: trivial_sampler_qt_gui
 
 %.so: %.o ../dssi/dssi.h $(MB_O)
 	gcc -nostartfiles -shared -lc -lm -o $*.so $*.o $(MB_O)
+
+trivial_sampler.o:	../dssi/dssi.h trivial_sampler.h
 
 trivial_sampler.so: trivial_sampler.o ../dssi/dssi.h
 	gcc -nostartfiles -shared -lsndfile -lsamplerate -lc -lm -o trivial_sampler.so trivial_sampler.o
