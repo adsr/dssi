@@ -935,7 +935,7 @@ int osc_midi_handler(const char *path, const char *types, lo_arg **argv, int arg
     }
 
     count = snd_midi_event_encode
-	(alsaCoder, argv[0]->m, 4, alsaEncodeBuffer);
+	(alsaCoder, (argv[0]->m)+1, 3, alsaEncodeBuffer);
     
     pthread_mutex_lock(&midiEventBufferMutex);
 

@@ -227,7 +227,7 @@ SynthGUI::timbreChanged(int value)
 void
 SynthGUI::test_press()
 {
-    unsigned char noteon[4] = { 0x90, 0x3C, 0x40, 0x00 };
+    unsigned char noteon[4] = { 0x00, 0x90, 0x3C, 0x40 };
 
     lo_send(m_host, m_midiPath, "m", noteon);
 }
@@ -235,7 +235,7 @@ SynthGUI::test_press()
 void
 SynthGUI::test_release()
 {
-    unsigned char noteoff[4] = { 0x90, 0x3C, 0x00, 0x00 };
+    unsigned char noteoff[4] = { 0x00, 0x90, 0x3C, 0x00 };
 
     lo_send(m_host, m_midiPath, "m", noteoff);
 }
