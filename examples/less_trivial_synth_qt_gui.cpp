@@ -17,6 +17,25 @@
 #include <iostream>
 #include <unistd.h>
 
+#ifdef Q_WS_X11
+#include <X11/Xlib.h>
+#include <X11/Xutil.h>
+#include <X11/Xatom.h>
+#include <X11/SM/SMlib.h>
+
+static int handle_x11_error(Display *dpy, XErrorEvent *err)
+{
+    char errstr[256];
+    XGetErrorText(dpy, err->error_code, errstr, 256);
+    if (err->error_code != BadWindow) {
+	std::cerr << "less_trivial_synth_qt_gui: X Error: "
+		  << errstr << " " << err->error_code
+		  << "\nin major opcode:  " << err->request_code << std::endl;
+    }
+    return 0;
+}
+#endif
+
 using std::cerr;
 using std::endl;
 
@@ -376,7 +395,6 @@ control_handler(const char *path, const char *types, lo_arg **argv,
     return 0;
 }
 
-
 int
 main(int argc, char **argv)
 {
@@ -394,6 +412,10 @@ main(int argc, char **argv)
 	     << endl;
 	return 2;
     }
+
+#ifdef Q_WS_X11
+    XSetErrorHandler(handle_x11_error);
+#endif
 
     char *url = application.argv()[1];
 

@@ -8,11 +8,13 @@ all:
 clean:
 	(cd examples && make clean)
 	(cd tests && make clean)
+	(cd fluidsynth-dssi && make clean)
 
 distclean:
 	(cd examples && make distclean)
 	(cd tests && make distclean)
-	rm -f *~
+	(cd fluidsynth-dssi && make distclean)
+	rm -f *~ doc/*~ dssi/*~
 
 install: all
 	mkdir -p $(PREFIX)/include

@@ -38,7 +38,7 @@ dssi_example_host.o:	../dssi/dssi.h dssi_example_host.h
 less_trivial_synth_qt_gui.o:	less_trivial_synth_qt_gui.h
 
 less_trivial_synth_qt_gui.moc.cpp:	less_trivial_synth_qt_gui.h
-	moc $< > $@
+	$(QTDIR)/bin/moc $< > $@
 
 less_trivial_synth_qt_gui: less_trivial_synth_qt_gui.o less_trivial_synth_qt_gui.moc.o
 	$(CXX) -o $@ $^ $(QTGUI_LDLIBS)
@@ -51,10 +51,11 @@ less_trivial_synth/LTS_qt: less_trivial_synth_qt_gui
 	gcc -nostartfiles -shared -lc -lm -o $*.so $*.o message_buffer.o
 
 clean:
-	rm -f *.o *.so *.moc.*
+	rm -f *.o *.moc.*
 
 distclean:	clean
 	rm -f *~ $(TARGETS)
+	rm -rf less_trivial_synth
 
 test: all
 	DSSI_PATH=`pwd` ./dssi_example_host less_trivial_synth.so
