@@ -70,8 +70,10 @@ typedef struct _DSSI_Program_Descriptor {
 	be a program 0, etc. */
     unsigned long Program;
 
-    /** Name of the program.  The host should be aware that a call to
-	configure() on a synth may invalidate this pointer entirely. */
+    /** Name of the program.  This points to memory owned by the
+	plugin.  It may be invalidated by any call to configure(), or
+	when a synth plugin is uninstantiated.  It should remain valid
+	otherwise, including after deactivation. */
     const char * Name;
 
 } DSSI_Program_Descriptor;

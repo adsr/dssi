@@ -50,6 +50,9 @@ static LADSPA_Handle pluginHandle = 0;
 static const DSSI_Descriptor *pluginDescriptor = 0;
 static const char osc_path[32];
 
+static int pluginProgramCount = 0;
+static DSSI_Program_Descriptor *pluginPrograms = 0;
+
 lo_server_thread serverThread;
 lo_target uiTarget;
 static char *gui_osc_control_path = 0;
@@ -595,6 +598,21 @@ main(int argc, char **argv)
 
     if (pluginDescriptor->LADSPA_Plugin->activate) {
 	pluginDescriptor->LADSPA_Plugin->activate(pluginHandle);
+    }
+
+    /* Look up synth programs */
+    
+    if (pluginDescriptor->get_program) {
+	for (i = 0; pluginDescriptor->get_program(pluginHandle, i); ++i);
+	if (i > 0) {
+	    pluginProgramCount = i;
+	    pluginPrograms = (DSSI_Program_Descriptor *)
+		malloc(i * sizeof(DSSI_Program_Descriptor));
+	    while (i > 0) {
+		--i;
+		pluginPrograms[i] = *pluginDescriptor->get_program(pluginHandle, i);
+	    }
+	}
     }
 
     /* Create ALSA MIDI port */
