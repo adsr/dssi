@@ -73,7 +73,7 @@ typedef struct _DSSI_Program_Descriptor {
     /** Name of the program.  This memory is allocated by the plugin
 	using malloc() and must be freed by the host when no longer
 	needed. */
-    const char * Name;
+    char * Name;
 
 } DSSI_Program_Descriptor;
 
