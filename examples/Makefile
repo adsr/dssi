@@ -1,8 +1,19 @@
-all: dssi_example_host trivial_synth.so less_trivial_synth.so dssi_osc_send \
-	dssi_osc_update
+
+TARGETS = \
+	dssi_example_host \
+	trivial_synth.so \
+	less_trivial_synth.so \
+	dssi_osc_send \
+	dssi_osc_update \
+	less_trivial_synth_qt_gui
+
+all: $(TARGETS)
 
 CFLAGS = -Wall -g3 -O3 -I../dssi $(shell pkg-config liblo --cflags)
+CXXFLAGS = $(CFLAGS) -I$(QTDIR)/include
+
 LDLIBS = -ljack -lasound -lpthread $(shell pkg-config liblo --libs)
+CXXLDLIBS = -L$(QTDIR)/lib -lqt-mt
 
 dssi_example_host:	dssi_example_host.o message_buffer.o osc_url.o
 
@@ -12,11 +23,23 @@ dssi_osc_update:	dssi_osc_update.o message_buffer.o osc_url.o
 
 dssi_example_host.o:	../dssi/dssi.h
 
+less_trivial_synth_qt_gui.o:	less_trivial_synth_qt_gui.h
+
+less_trivial_synth_qt_gui.moc.cpp:	less_trivial_synth_qt_gui.h
+	moc $< > $@
+
+less_trivial_synth_qt_gui: less_trivial_synth_qt_gui.o less_trivial_synth_qt_gui.moc.o
+	$(CXX) -o $@ $^ $(LDLIBS) $(CXXLDLIBS)
+
 %.so: %.o ../dssi/dssi.h message_buffer.o
 	gcc -nostartfiles -shared -lc -lm -o $*.so $*.o message_buffer.o
 
 clean:
-	rm -f *.o *.so
+	rm -f *.o *.so *.moc.*
+
+distclean:	clean
+	rm -f *~ $(TARGETS)
 
 test: all
 	DSSI_PATH=`pwd` ./dssi_example_host less_trivial_synth.so
+
