@@ -27,6 +27,7 @@ To build the example code you will need:
 
   ALSA 0.9/1.0.x
   JACK
+  LADSPA
   liblo-0.5 or above: http://www.plugin.org.uk/liblo/
   pkgconfig with PKG_CONFIG_PATH set appropriately to pick up liblo
   Qt 3 with QTDIR set appropriately
