@@ -21,6 +21,12 @@
 #include <alsa/seq.h>
 #include <jack/jack.h>
 #include <dlfcn.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <lo/lo.h>
+
+#include "message_buffer.h"
+#include "osc_url.h"
 
 static snd_seq_t *alsaClient;
 
@@ -33,9 +39,14 @@ static float **pluginInputBuffers, **pluginOutputBuffers;
 static int controlIns, controlOuts;
 static float *pluginControlIns, *pluginControlOuts;
 static unsigned long *pluginControlInPortNumbers;
+static int *pluginPortControlInNumbers;
 
 static LADSPA_Handle pluginHandle = 0;
 static const DSSI_Descriptor *pluginDescriptor = 0;
+static const char osc_path[32];
+
+lo_server_thread serverThread;
+lo_target uiTarget;
 
 #define EVENT_BUFFER_SIZE 1024
 static snd_seq_event_t midiEventBuffer[EVENT_BUFFER_SIZE]; /* ring buffer */
@@ -45,6 +56,17 @@ static int midiEventReadIndex = 0, midiEventWriteIndex = 0;
 static long controllerMap[MIDI_CONTROLLER_COUNT]; /* contains indices into pluginControlIns */
 
 LADSPA_Data get_port_default(const LADSPA_Descriptor *plugin, int port);
+
+void osc_error(int num, const char *m, const char *path);
+
+int osc_handler(const char *path, const char *types, lo_arg **argv, int argc,
+                 void *data, void *user_data) ;
+int update_handler(const char *path, const char *types, lo_arg **argv, int
+		    argc, void *data, void *user_data) ;
+int debug_handler(const char *path, const char *types, lo_arg **argv, int
+		    argc, void *data, void *user_data) ;
+char *osc_url_get_hostname(const char *url);
+char *osc_url_get_port(const char *url);
 
 void
 midi_callback()
@@ -138,7 +160,7 @@ audio_callback(jack_nframes_t nframes, void *arg)
 
 	    int controller = ev->data.control.param;
 #ifdef DEBUG
-	    printf("CC %d(0x%02x) = %d\n", controller, controller,
+	    MB_MESSAGE("CC %d(0x%02x) = %d\n", controller, controller,
 		    ev->data.control.value);
 #endif
 
@@ -250,6 +272,7 @@ main(int argc, char **argv)
     char *label = 0;
     void *pluginObject = 0;
     const char **ports;
+    char update_path[32];
     int i;
 
     /* Parse args and report usage */
@@ -323,6 +346,9 @@ main(int argc, char **argv)
     pluginControlIns = (float *)calloc(controlIns, sizeof(float));
     pluginControlInPortNumbers =
 	(unsigned long *)malloc(controlIns * sizeof(unsigned long));
+    pluginPortControlInNumbers =
+	(int *)malloc(pluginDescriptor->LADSPA_Plugin->PortCount *
+				sizeof(int));
 
     outputPorts = (jack_port_t **)malloc(outs * sizeof(jack_port_t *));
     pluginOutputBuffers = (float **)malloc(outs * sizeof(float *));
@@ -360,6 +386,21 @@ main(int argc, char **argv)
 	return 1;
     }
 
+    /* Create OSC thread */
+
+    serverThread = lo_server_thread_new("4444", osc_error);
+    //snprintf((char *)osc_path, 31, "/dssi/%d.1", (int)getpid());
+    snprintf((char *)osc_path, 31, "/dssi/test.1");
+    snprintf(update_path, 31, "%s/update", osc_path);
+    printf("registering osc://localhost:4444%s\n", osc_path);
+    lo_server_thread_add_method(serverThread, osc_path, "if", osc_handler,
+				NULL);
+    lo_server_thread_add_method(serverThread, update_path, "s", update_handler,
+				NULL);
+    lo_server_thread_add_method(serverThread, NULL, NULL, debug_handler,
+				NULL);
+    lo_server_thread_start(serverThread);
+
     ins = outs = controlIns = controlOuts = 0;
     
     for (i = 0; i < MIDI_CONTROLLER_COUNT; ++i) {
@@ -370,6 +411,8 @@ main(int argc, char **argv)
 
 	LADSPA_PortDescriptor pod =
 	    pluginDescriptor->LADSPA_Plugin->PortDescriptors[i];
+
+	pluginPortControlInNumbers[i] = -1;
 
 	if (LADSPA_IS_PORT_AUDIO(pod)) {
 
@@ -392,20 +435,22 @@ main(int argc, char **argv)
 			get_midi_controller_for_port(pluginHandle, i);
 
 		    if (controller == 0) {
-			fprintf(stderr,
-				"Buggy plugin: wants mapping for bank MSB\n");
+			MB_MESSAGE
+			    ("Buggy plugin: wants mapping for bank MSB\n");
 		    } else if (controller == 32) {
-			fprintf(stderr,
-				"Buggy plugin: wants mapping for bank LSB\n");
+			MB_MESSAGE
+			    ("Buggy plugin: wants mapping for bank LSB\n");
 		    } else if (DSSI_IS_CC(controller)) {
 			controllerMap[DSSI_CC_NUMBER(controller)] = controlIns;
 		    }
 		}
 
 		pluginControlInPortNumbers[controlIns] = i;
+		pluginPortControlInNumbers[i] = controlIns;
 
 		pluginControlIns[controlIns] = get_port_default
 		    (pluginDescriptor->LADSPA_Plugin, i);
+
 		pluginDescriptor->LADSPA_Plugin->connect_port
 		    (pluginHandle, i, &pluginControlIns[controlIns++]);
 
@@ -440,6 +485,8 @@ main(int argc, char **argv)
     pfd = (struct pollfd *)alloca(npfd * sizeof(struct pollfd));
     snd_seq_poll_descriptors(alsaClient, pfd, npfd, POLLIN);
 
+    mb_init("host: ");
+
     if (jack_activate(jackClient)) {
         fprintf (stderr, "cannot activate jack client");
         exit(1);
@@ -462,7 +509,7 @@ main(int argc, char **argv)
     }
     if (ports) free(ports);
 
-    printf("Ready\n");
+    MB_MESSAGE("Ready\n");
 
     while (1) {
 	if (poll(pfd, npfd, 100000) > 0) {
@@ -532,4 +579,66 @@ LADSPA_Data get_port_default(const LADSPA_Descriptor *plugin, int port)
 
     /* fallback */
     return 0.0f;
+}
+
+void osc_error(int num, const char *msg, const char *path)
+{
+    printf("liblo server error %d in path %s: %s\n", num, path, msg);
+}
+
+int osc_handler(const char *path, const char *types, lo_arg **argv, int argc,
+                 void *data, void *user_data) 
+{
+    int port = argv[0]->i;
+    LADSPA_Data value = argv[1]->f;
+
+    if (port < 0 || port > pluginDescriptor->LADSPA_Plugin->PortCount) {
+	fprintf(stderr, "OSC: port number (%d) is out of range\n", port);
+	return 0;
+    }
+    if (pluginPortControlInNumbers[port] == -1) {
+	fprintf(stderr, "OSC: port %d is not a control in\n", port);
+	return 0;
+    }
+    pluginControlIns[pluginPortControlInNumbers[port]] = value;
+    printf("OSC: port %d = %f\n", port, value);
+    
+    return 0;
+}
+
+int update_handler(const char *path, const char *types, lo_arg **argv, int argc,
+                 void *data, void *user_data) 
+{
+    const char *url = &argv[0]->s;
+    unsigned int i;
+    char *host, *port;
+
+    printf("OSC: got update request from <%s>\n", url);
+    host = osc_url_get_hostname(url);
+    port = osc_url_get_port(url);
+    uiTarget = lo_target_new(host, port);
+    free(host);
+    free(port);
+    for (i=0; i<controlIns; i++) {
+	int port = pluginControlInPortNumbers[i];
+	lo_send(uiTarget, osc_path, "if", port, pluginControlIns[i]);
+    }
+
+    return 0;
+}
+
+int debug_handler(const char *path, const char *types, lo_arg **argv,
+                    int argc, void *data, void *user_data)
+{
+    int i;
+
+    printf("got unhandled OSC message:\npath: <%s>\n", path);
+    for (i=0; i<argc; i++) {
+        printf("arg %d '%c' ", i, types[i]);
+        lo_arg_pp(types[i], argv[i]);
+        printf("\n"); 
+    }
+    printf("\n");
+
+    return 1;
 }
