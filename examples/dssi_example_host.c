@@ -87,6 +87,8 @@ void osc_error(int num, const char *m, const char *path);
 
 int osc_message_handler(const char *path, const char *types, lo_arg **argv, int
 		      argc, void *data, void *user_data) ;
+int osc_debug_handler(const char *path, const char *types, lo_arg **argv, int
+		      argc, void *data, void *user_data) ;
 
 void
 signalHandler(int sig)

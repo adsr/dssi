@@ -389,4 +389,3 @@ typedef const DSSI_Descriptor *(*DSSI_Descriptor_Function)(unsigned long Index);
 #endif
 
 #endif /* DSSI_INCLUDED */
-

@@ -14,6 +14,7 @@
 
 #include <qapplication.h>
 #include <qpushbutton.h>
+#include <qtimer.h>
 #include <iostream>
 #include <unistd.h>
 
@@ -46,6 +47,7 @@ using std::endl;
 #define LTS_PORT_RELEASE 5
 #define LTS_PORT_TIMBRE  6
 
+lo_server osc_server = 0;
 
 SynthGUI::SynthGUI(QString host, QString port,
 		   QString controlPath, QString midiPath, QString programPath,
@@ -124,6 +126,10 @@ SynthGUI::SynthGUI(QString host, QString port,
     connect(testButton, SIGNAL(pressed()), this, SLOT(test_press()));
     connect(testButton, SIGNAL(released()), this, SLOT(test_release()));
     layout->addWidget(testButton, 2, 6, Qt::AlignCenter);
+
+    QTimer *myTimer = new QTimer(this);
+    connect(myTimer, SIGNAL(timeout()), this, SLOT(oscRecv()));
+    myTimer->start(0, false);
 
     m_suppressHostUpdate = false;
 }
@@ -249,6 +255,14 @@ SynthGUI::test_press()
     unsigned char noteon[4] = { 0x00, 0x90, 0x3C, 0x40 };
 
     lo_send(m_host, m_midiPath, "m", noteon);
+}
+
+void
+SynthGUI::oscRecv()
+{
+    if (osc_server) {
+	lo_server_recv_noblock(osc_server, 1);
+    }
 }
 
 void
@@ -439,21 +453,20 @@ main(int argc, char **argv)
     QString myHidePath = QString("%1/hide").arg(path);
     QString myQuitPath = QString("%1/quit").arg(path);
 
-    lo_server_thread thread = lo_server_thread_new(NULL, osc_error);
-    lo_server_thread_add_method(thread, myControlPath, "if", control_handler, &gui);
-    lo_server_thread_add_method(thread, myProgramPath, "ii", program_handler, &gui);
-    lo_server_thread_add_method(thread, myConfigurePath, "ss", configure_handler, &gui);
-    lo_server_thread_add_method(thread, myShowPath, "", show_handler, &gui);
-    lo_server_thread_add_method(thread, myHidePath, "", hide_handler, &gui);
-    lo_server_thread_add_method(thread, myQuitPath, "", quit_handler, &gui);
-    lo_server_thread_add_method(thread, NULL, NULL, debug_handler, &gui);
-    lo_server_thread_start(thread);
+    osc_server = lo_server_new(NULL, osc_error);
+    lo_server_add_method(osc_server, NULL, NULL, debug_handler, &gui);
+    lo_server_add_method(osc_server, myControlPath, "if", control_handler, &gui);
+    lo_server_add_method(osc_server, myProgramPath, "ii", program_handler, &gui);
+    lo_server_add_method(osc_server, myConfigurePath, "ss", configure_handler, &gui);
+    lo_server_add_method(osc_server, myShowPath, "", show_handler, &gui);
+    lo_server_add_method(osc_server, myHidePath, "", hide_handler, &gui);
+    lo_server_add_method(osc_server, myQuitPath, "", quit_handler, &gui);
 
     lo_address hostaddr = lo_address_new(host, port);
     lo_send(hostaddr,
 	    QString("%1/update").arg(path),
 	    "s",
-	    QString("%1%2").arg(lo_server_thread_get_url(thread)).arg(path+1).data());
+	    QString("%1%2").arg(lo_server_get_url(osc_server)).arg(path+1).data());
 
     QObject::connect(&application, SIGNAL(aboutToQuit()), &gui, SLOT(aboutToQuit()));
 
