@@ -2,8 +2,8 @@
 
 /* dssi.h
 
-   Disposable Soft Synth Interface version 0.1
-   Copyright (c) 2004 Chris Cannam and Steve Harris
+   Disposable Soft Synth Interface version 0.3
+   Copyright (c) 2004 Chris Cannam, Steve Harris and Sean Bolton
    
    This library is free software; you can redistribute it and/or
    modify it under the terms of the GNU Lesser General Public License
@@ -27,10 +27,9 @@
 #include <ladspa.h>
 #include <alsa/seq_event.h>
 
-/* Expect API stability only from version 1.0 onwards! */
-#define DSSI_VERSION "0.2"
+#define DSSI_VERSION "0.3"
 #define DSSI_VERSION_MAJOR 0
-#define DSSI_VERSION_MINOR 2
+#define DSSI_VERSION_MINOR 3
 
 #ifdef __cplusplus
 extern "C" {
@@ -71,10 +70,9 @@ typedef struct _DSSI_Program_Descriptor {
 	be a program 0, etc. */
     unsigned long Program;
 
-    /** Name of the program.  This points to memory owned by the
-	plugin.  It may be invalidated by any call to configure(), or
-	when a synth plugin is uninstantiated.  It should remain valid
-	otherwise, including after deactivation. */
+    /** Name of the program.  This memory is allocated by the plugin
+	using malloc() and must be freed by the host when no longer
+	needed. */
     const char * Name;
 
 } DSSI_Program_Descriptor;
@@ -83,6 +81,8 @@ typedef struct _DSSI_Program_Descriptor {
 typedef struct _DSSI_Descriptor {
 
     /**
+     * DSSI_API_Version
+     *
      * This member indicates the DSSI API level used by this plugin.
      * If we're lucky, this will never be needed.  For now all plugins
      * must set it to 1.
@@ -90,15 +90,8 @@ typedef struct _DSSI_Descriptor {
     int DSSI_API_Version;
 
     /**
-     * This member indicates the number of distinct channels supported
-     * by the plugin.  A value of 0 indicates that the channel value
-     * in program changes and note events will be ignored entirely.
-     * The MIDI standard is for 16 channels.  The DSSI API currently
-     * supports up to 256.
-     */
-    unsigned long ChannelCount;
-
-    /**
+     * LADSPA_Plugin
+     *
      * A DSSI synth plugin consists of a LADSPA plugin plus an
      * additional framework for controlling program settings and
      * transmitting MIDI events.  A plugin must fully implement the
@@ -115,11 +108,12 @@ typedef struct _DSSI_Descriptor {
     const LADSPA_Descriptor *LADSPA_Plugin;
 
     /**
+     * configure()
+     *
      * This member is a function pointer that sends a piece of
      * configuration data to the plugin.  The key argument specifies
      * some aspect of the synth's configuration that is to be changed,
-     * and the value argument specifies a new value for it.  A plugin
-     * with no use for this function may set this pointer to NULL.
+     * and the value argument specifies a new value for it.
      *
      * This call is intended to set some session-scoped aspect of a
      * plugin's behaviour, for example to tell the plugin to load
@@ -145,43 +139,52 @@ typedef struct _DSSI_Descriptor {
      * information last obtained from the plugin.
      */
      char *(*configure)(LADSPA_Handle Instance,
-			const char *key,
-			const char *value);
+			const char *Key,
+			const char *Value);
 
     /**
-     * This member is a function pointer that returns a description of
-     * a program (named preset sound) available on this synth.  A
+     * get_program()
+     *
+     * This member is a function pointer that provides a description
+     * of a program (named preset sound) available on this synth.  A
      * plugin that does not support programs at all should set this
      * member to NULL.
      *
      * The Index argument is an index into the plugin's list of
      * programs, not a program number as represented by the Program
-     * field of the DSSI_Program_Descriptor.  This function must
-     * return NULL if given an argument out of range, so that the host
-     * can use it to query the number of programs as well as their
-     * properties.
+     * field of the DSSI_Program_Descriptor.
+     *
+     * This function must return 1 if given an Index argument in range
+     * or 0 if given an argument out of range, so that the host can
+     * use it to query the number of programs as well as their
+     * properties.  The program details are returned through the given
+     * Descriptor pointer if it is not NULL; this function may legally
+     * be called with a NULL Descriptor pointer for the purposes of
+     * determining only whether a given program index is legitimate.
      *
      * (The distinction between the program number and the index
      * argument to this function is needed to support synths that use
      * non-contiguous program or bank numbers.)
      */
-    const DSSI_Program_Descriptor *(*get_program)(LADSPA_Handle Instance,
-						  unsigned long Index);
+    const int (*get_program)(LADSPA_Handle Instance,
+			     unsigned long Index,
+			     DSSI_Program_Descriptor *Descriptor);
 
     /**
+     * select_program()
+     *
      * This member is a function pointer that selects a new program
-     * for a given channel on this synth.  The program change should
-     * take effect immediately at the start of the next run_synth()
-     * call.  (This means that a host providing the capability of
-     * changing programs between any two notes on a track must vary
-     * the block size so as to place the program change at the right
-     * place.  A host that wanted to avoid this would probably just
-     * instantiate a plugin for each program.)
+     * for this synth.  The program change should take effect
+     * immediately at the start of the next run_synth() call.  (This
+     * means that a host providing the capability of changing programs
+     * between any two notes on a track must vary the block size so as
+     * to place the program change at the right place.  A host that
+     * wanted to avoid this would probably just instantiate a plugin
+     * for each program.)
      * 
      * A plugin that does not support programs at all should set this
      * member NULL.  Plugins should ignore a select_program() call
-     * with an invalid bank or program.  Plugins giving the value 0
-     * for their ChannelCount should ignore the Channel parameter.
+     * with an invalid bank or program.
      *
      * A plugin is not required to select any particular default
      * program on activate(): it's the host's duty to set a program
@@ -189,11 +192,12 @@ typedef struct _DSSI_Descriptor {
      * configure().
      */
     void (*select_program)(LADSPA_Handle Instance,
-			   unsigned long Channel,
 			   unsigned long Bank,
 			   unsigned long Program);
 
     /**
+     * get_midi_controller_for_port()
+     *
      * This member is a function pointer that returns the MIDI
      * controller number or NRPN that should be mapped to the given
      * input control port.  If the given port should not have any MIDI
@@ -212,10 +216,7 @@ typedef struct _DSSI_Descriptor {
      * controller and NRPN value ranges to port ranges according to
      * the plugin's LADSPA port hints.  Hosts should not deliver
      * through run_synth any MIDI controller events that have already
-     * been mapped to control port values.  Note that because control
-     * ports operate on a per-instance basis rather than a per-channel
-     * basis, the host will ignore the MIDI channel number on control
-     * change events that are mapped to port values.
+     * been mapped to control port values.
      *
      * A plugin should not attempt to request mappings from
      * controllers 0 or 32 (MIDI Bank Select MSB and LSB).
@@ -224,9 +225,15 @@ typedef struct _DSSI_Descriptor {
 					unsigned long Port);
 
     /**
+     * run_synth()
+     *
      * This member is a function pointer that runs a synth for a
      * block.  This is identical in function to the LADSPA run()
      * function, except that it also supplies events to the synth.
+     *
+     * A plugin must provide either this function,
+     * run_multiple_synths() (see below), or both.  A plugin that
+     * does not provide this function must set this member to NULL.
      *
      * The Events pointer points to a block of EventCount ALSA
      * sequencer events, which is used to communicate MIDI and related
@@ -234,9 +241,6 @@ typedef struct _DSSI_Descriptor {
      * start of the block, (mis)using the ALSA "tick time" field as a
      * frame count. The host is responsible for ensuring that events
      * with differing timestamps are already ordered by time.
-     *
-     * Plugins giving the value 0 for their ChannelCount should ignore
-     * the "channel" field of each event.
      *
      * See also the notes on activation, port connection etc in
      * ladpsa.h, in the context of the LADSPA run() function.
@@ -271,6 +275,8 @@ typedef struct _DSSI_Descriptor {
 		      unsigned long    EventCount);
 
     /**
+     * run_synth_adding()
+     *
      * This member is a function pointer that runs an instance of a
      * synth for a block, adding its outputs to the values already
      * present at the output ports.  This is provided for symmetry
@@ -282,6 +288,45 @@ typedef struct _DSSI_Descriptor {
 			     snd_seq_event_t *Events,
 			     unsigned long    EventCount);
 
+    /**
+     * run_multiple_synths()
+     *
+     * This member is a function pointer that runs multiple synth
+     * instances for a block.  This is very similar to run_synth(),
+     * except that Instances, Events, and EventCounts each point to
+     * arrays that hold the LADSPA handles, event buffers, and
+     * event counts for each of InstanceCount instances.  That is,
+     * Instances points to an array of InstanceCount pointers to
+     * DSSI plugin instantiations, Events points to an array of
+     * pointers to each instantiation's respective event list, and
+     * EventCounts points to an array containing each instantiation's
+     * respective event count.
+     *
+     * A plugin must provide either this function, run_synths() (see
+     * above), or both.  A plugin that does not provide this function
+     * must set this member to NULL.
+     */
+    void (*run_multiple_synths)(unsigned long     InstanceCount,
+                                LADSPA_Handle    *Instances,
+                                unsigned long     SampleCount,
+                                snd_seq_event_t **Events,
+                                unsigned long    *EventCounts);
+
+    /**
+     * run_multiple_synths_adding()
+     *
+     * This member is a function pointer that runs multiple synth
+     * instances for a block, adding each synth's outputs to the
+     * values already present at the output ports.  This is provided
+     * for symmetry with both the DSSI run_multiple_synths() and LADSPA
+     * run_adding() functions, and is equally optional.  A plugin
+     * that does not provide it must set this member to NULL.
+     */
+    void (*run_multiple_synths_adding)(unsigned long     InstanceCount,
+                                       LADSPA_Handle    *Instances,
+                                       unsigned long     SampleCount,
+                                       snd_seq_event_t **Events,
+                                       unsigned long    *EventCounts);
 } DSSI_Descriptor;
 
 const DSSI_Descriptor *dssi_descriptor(unsigned long Index);

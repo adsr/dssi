@@ -1,25 +1,33 @@
 /* -*- c-basic-offset: 4 -*-  vi:set ts=8 sts=4 sw=4: */
 
 /* dssi_example_host.c
-
-   Disposable Soft Synth Interface
-   Constructed by Chris Cannam and Steve Harris
-
-   This is an example DSSI host.  It listens for MIDI events on an
-   ALSA sequencer port, delivers them to a DSSI synth and outputs the
-   result via JACK.
-
-   This program expects the DSSI synth plugin DLL name and label to be
-   provided on the command line.  If the label is missing, it will use
-   the first plugin in the given DLL.
-
-   This example file is in the public domain.
+ *
+ * Disposable Soft Synth Interface
+ * Constructed by Chris Cannam, Steve Harris and Sean Bolton
+ *
+ * This is an example DSSI host.  It listens for MIDI events on an
+ * ALSA sequencer port, delivers them to DSSI synths and outputs the
+ * result via JACK.
+ *
+ * This program expects the names of up to 16 DSSI synth plugins, in
+ * the form '<dll-name>/<label>',* to be provided on the command line.
+ * If just '<dll-name>' is provided, the first plugin in the DLL is
+ * is used.  MIDI channels are assigned to each plugin instance, in
+ * order, beginning with channel 0 (zero-based).  A plugin may be
+ * easily instantiated multiple times by preceding its name and label
+ * with a dash followed immediately by the desired number of instances,
+ * e.g. '-3 my_plugins.so/zoomy' would create three instances of the
+ * 'zoomy' plugin.
+ *
+ * This example file is in the public domain.
 */
 
-#include <dssi.h>
+#include <ladspa.h>
+#include "dssi.h"
 #include <alsa/asoundlib.h>
 #include <alsa/seq.h>
 #include <jack/jack.h>
+#include <stdlib.h>
 #include <dlfcn.h>
 #include <unistd.h>
 #include <sys/types.h>
@@ -30,6 +38,8 @@
 
 #include <lo/lo.h>
 
+#include "dssi_example_host.h"
+
 #include "message_buffer.h"
 
 static snd_seq_t *alsaClient;
@@ -37,39 +47,31 @@ static snd_seq_t *alsaClient;
 static jack_client_t *jackClient;
 static jack_port_t **inputPorts, **outputPorts;
 
-static int ins, outs;
+static d3h_dll_t     *dlls;
+
+static d3h_plugin_t  *plugins;
+static int            plugin_count = 0;
+
+static d3h_instance_t instances[D3H_MAX_INSTANCES];
+static int            instance_count = 0;
+
+static LADSPA_Handle    *instanceHandles;
+static snd_seq_event_t **instanceEventBuffers;
+static unsigned long    *instanceEventCounts;
+
+static int insTotal, outsTotal;
 static float **pluginInputBuffers, **pluginOutputBuffers;
 
-static int controlIns, controlOuts;
+static int controlInsTotal, controlOutsTotal;
 static float *pluginControlIns, *pluginControlOuts;
-static unsigned long *pluginControlInPortNumbers;
-static int *pluginPortControlInNumbers;
-static int *pluginPortUpdated;
+static d3h_instance_t *channel2instance[D3H_MAX_CHANNELS]; /* maps MIDI channel to instance */
+static d3h_instance_t **pluginControlInInstances;          /* maps global control in # to instance */
+static unsigned long *pluginControlInPortNumbers;          /* maps global control in # to instance LADSPA port # */
+static int *pluginPortUpdated;                             /* indexed by global control in # */
 
-static LADSPA_Handle pluginHandle = 0;
-static const DSSI_Descriptor *pluginDescriptor = 0;
-static const char osc_path[32];
-
-static int pluginProgramCount = 0;
-static DSSI_Program_Descriptor *pluginPrograms = 0;
-
-typedef struct {
-    long bank;
-    long program;
-    int pendingBankLSB;
-    int pendingBankMSB;
-    int pendingProgram;
-    int programUpdated;
-} ProgramData;
-
-static ProgramData *programData;
-static int channelCount;
+static char osc_path_tmp[1024];
 
 lo_server_thread serverThread;
-lo_target uiTarget;
-static char *gui_osc_control_path = 0;
-static char *gui_osc_program_path = 0;
-static char *gui_osc_show_path = 0;
 
 static sigset_t _signals;
 
@@ -77,28 +79,13 @@ static sigset_t _signals;
 static snd_seq_event_t midiEventBuffer[EVENT_BUFFER_SIZE]; /* ring buffer */
 static int midiEventReadIndex = 0, midiEventWriteIndex = 0;
 
-#define MIDI_CONTROLLER_COUNT 128
-static long controllerMap[MIDI_CONTROLLER_COUNT]; /* contains indices into pluginControlIns */
-
 static pthread_mutex_t midiEventBufferMutex = PTHREAD_MUTEX_INITIALIZER;
 
 LADSPA_Data get_port_default(const LADSPA_Descriptor *plugin, int port);
 
 void osc_error(int num, const char *m, const char *path);
 
-int osc_control_handler(const char *path, const char *types, lo_arg **argv, int argc,
-			void *data, void *user_data) ;
-int osc_midi_handler(const char *path, const char *types, lo_arg **argv, int argc,
-		     void *data, void *user_data) ;
-int osc_update_handler(const char *path, const char *types, lo_arg **argv, int
-		       argc, void *data, void *user_data) ;
-int osc_program_handler(const char *path, const char *types, lo_arg **argv, int
-			argc, void *data, void *user_data) ;
-int osc_configure_handler(const char *path, const char *types, lo_arg **argv, int
-			  argc, void *data, void *user_data) ;
-int osc_exiting_handler(const char *path, const char *types, lo_arg **argv, int argc,
-			void *data, void *user_data) ;
-int osc_debug_handler(const char *path, const char *types, lo_arg **argv, int
+int osc_message_handler(const char *path, const char *types, lo_arg **argv, int
 		      argc, void *data, void *user_data) ;
 
 void
@@ -147,21 +134,20 @@ midi_callback()
 }
 
 void
-setControl(long controlIn, snd_seq_event_t *event)
+setControl(d3h_instance_t *instance, long controlIn, snd_seq_event_t *event)
 {
     long port = pluginControlInPortNumbers[controlIn];
 
-    LADSPA_PortRangeHintDescriptor d =
-	pluginDescriptor->LADSPA_Plugin->PortRangeHints[port].HintDescriptor;
+    const LADSPA_Descriptor *p = instance->plugin->descriptor->LADSPA_Plugin;
 
-    LADSPA_Data lb = 
-	pluginDescriptor->LADSPA_Plugin->PortRangeHints[port].LowerBound;
+    LADSPA_PortRangeHintDescriptor d = p->PortRangeHints[port].HintDescriptor;
 
-    LADSPA_Data ub = 
-	pluginDescriptor->LADSPA_Plugin->PortRangeHints[port].UpperBound;
-    
+    LADSPA_Data lb = p->PortRangeHints[port].LowerBound;
+
+    LADSPA_Data ub = p->PortRangeHints[port].UpperBound;
+
     float value = (float)event->data.control.value;
-    
+
     if (!LADSPA_IS_HINT_BOUNDED_BELOW(d)) {
 	if (!LADSPA_IS_HINT_BOUNDED_ABOVE(d)) {
 	    /* unbounded: might as well leave the value alone. */
@@ -180,142 +166,160 @@ setControl(long controlIn, snd_seq_event_t *event)
 	}
     }
     
-    printf("dssi_example_host: MIDI controller %d=%d -> control in %ld=%f\n",
-	   event->data.control.param, event->data.control.value,
-	   controlIn, value);
+    printf("dssi_example_host: %s MIDI controller %d=%d -> control in %ld=%f\n",
+	   instance->friendly_name, event->data.control.param,
+           event->data.control.value, controlIn, value);
 
     pluginControlIns[controlIn] = value;
-    pluginPortUpdated[pluginControlInPortNumbers[controlIn]] = 1;
+    pluginPortUpdated[controlIn] = 1;
 }
 
 int
 audio_callback(jack_nframes_t nframes, void *arg)
 {
-    static snd_seq_event_t processEventBuffer[EVENT_BUFFER_SIZE];
-    int i = 0, count = 0;
+    int i;
+    d3h_instance_t *instance;
 
     /* Not especially pretty or efficient */
 
-    while (midiEventReadIndex != midiEventWriteIndex) {
+    for (i = 0; i < instance_count; i++) {
+        instanceEventCounts[i] = 0;
+    }
 
-	if (count == EVENT_BUFFER_SIZE) break;
+    for ( ; midiEventReadIndex != midiEventWriteIndex;
+         midiEventReadIndex = (midiEventReadIndex + 1) % EVENT_BUFFER_SIZE) {
 
 	snd_seq_event_t *ev = &midiEventBuffer[midiEventReadIndex];
-	
-	/* We disregard the MIDI channel throughout: DSSI synths are
-	   single-channel affairs */
+
+        if (!snd_seq_ev_is_channel_type(ev)) {
+            /* discard non-channel oriented messages */
+            continue;
+        }
+
+        instance = channel2instance[ev->data.note.channel];
+        if (!instance) {
+            /* discard messages intended for channels we aren't using */
+            continue;
+        }
+        i = instance->number;
+
+        /* stop processing incoming MIDI if an instance's event buffer is
+         * full. */
+	if (instanceEventCounts[i] == EVENT_BUFFER_SIZE)
+            break;
+
+	/* We can't exercise the plugin's support for the frame offset
+	 * count, because we don't know at what frame times the
+	 * events were intended to arrive. */
+	ev->time.tick = 0;
 
 	if (ev->type == SND_SEQ_EVENT_CONTROLLER) {
 
 	    int controller = ev->data.control.param;
 #ifdef DEBUG
-	    MB_MESSAGE("CC %d(0x%02x) = %d\n", controller, controller,
-		    ev->data.control.value);
+	    MB_MESSAGE("%s CC %d(0x%02x) = %d\n", instance->friendly_name,
+                       controller, controller, ev->data.control.value);
 #endif
 
 	    if (controller == 0) { // bank select MSB
 
-		int channel = ev->data.control.channel;
-		if (pluginDescriptor->ChannelCount == 0) channel = 0;
-		if (channel < channelCount) {
-		    programData[channel].pendingBankMSB = ev->data.control.value;
-		}
+		instance->pendingBankMSB = ev->data.control.value;
 
 	    } else if (controller == 32) { // bank select LSB
 
-		int channel = ev->data.control.channel;
-		if (pluginDescriptor->ChannelCount == 0) channel = 0;
-		if (channel < channelCount) {
-		    programData[channel].pendingBankLSB = ev->data.control.value;
-		}
+		instance->pendingBankLSB = ev->data.control.value;
 
 	    } else if (controller > 0 && controller < MIDI_CONTROLLER_COUNT) {
 
-		long controlIn = controllerMap[controller];
+		long controlIn = instance->controllerMap[controller];
 		if (controlIn >= 0) {
 
                     /* controller is mapped to LADSPA port, update the port */
-		    setControl(controlIn, ev);
+		    setControl(instance, controlIn, ev);
 
 		} else {
 
                     /* controller is not mapped, so pass the event through to plugin */
-                    processEventBuffer[count] = midiEventBuffer[midiEventReadIndex];
-                    ++count;
-		}
+                    instanceEventBuffers[i][instanceEventCounts[i]] = *ev;
+                    instanceEventCounts[i]++;
+                }
 	    }
 
 	} else if (ev->type == SND_SEQ_EVENT_PGMCHANGE) {
-
-	    int channel = ev->data.control.channel;
-	    if (pluginDescriptor->ChannelCount == 0) channel = 0;
-	    if (channel < channelCount) {
-		programData[channel].pendingProgram = ev->data.control.value;
-	    }
+	    
+	    instance->pendingProgramChange = ev->data.control.value;
+	    instance->uiNeedsProgramUpdate = 1;
 
 	} else {
-	
-	    processEventBuffer[count] = midiEventBuffer[midiEventReadIndex];
-	    ++count;
-	}
 
-	midiEventReadIndex = (midiEventReadIndex + 1) % EVENT_BUFFER_SIZE;
-    }
-
-    for (i = 0; i < count; ++i) {
-	/* We can't exercise the plugin's support for the frame offset
-	   count here, because we don't know at what frame times the
-	   events were intended to arrive. */
-	processEventBuffer[i].time.tick = 0; 
-    }
-
-    for (i = 0; i < channelCount; ++i) {
-
-	if (programData[i].pendingProgram >= 0) {
-
-	    int pc  = programData[i].pendingProgram;
-	    int msb = programData[i].pendingBankMSB;
-	    int lsb = programData[i].pendingBankLSB;
-
-	    programData[i].pendingProgram = -1;
-	    programData[i].pendingBankMSB = -1;
-	    programData[i].pendingBankLSB = -1;
-
-	    //!!! gosh, I don't know this -- need to check with the specs:
-	    // if you only send one of MSB/LSB controllers, should the
-	    // other go to zero or remain as it was?  Assume it remains as
-	    // it was, for now.
-
-	    if (lsb >= 0) {
-		if (msb >= 0) {
-		    programData[i].bank = lsb + 128 * msb;
-		} else {
-		    programData[i].bank = lsb + 128 * (programData[i].bank / 128);
-		}
-	    } else if (msb >= 0) {
-		programData[i].bank = (programData[i].bank % 128) + 128 * msb;
-	    }
-
-	    programData[i].program = pc;
-
-	    if (pluginDescriptor->select_program) {
-		pluginDescriptor->select_program(pluginHandle, i,
-						 programData[i].bank,
-						 programData[i].program);
-	    }
-
-	    programData[i].programUpdated = 1;
+            instanceEventBuffers[i][instanceEventCounts[i]] = *ev;
+            instanceEventCounts[i]++;
 	}
     }
 
-    pluginDescriptor->run_synth(pluginHandle,
-				nframes,
-				processEventBuffer,
-				count);
+    /* process pending program changes */
+    for (i = 0; i < instance_count; i++) {
+        instance = &instances[i];
+
+        if (instance->pendingProgramChange >= 0) {
+
+            int pc = instance->pendingProgramChange;
+            int msb = instance->pendingBankMSB;
+            int lsb = instance->pendingBankLSB;
+
+            //!!! gosh, I don't know this -- need to check with the specs:
+            // if you only send one of MSB/LSB controllers, should the
+            // other go to zero or remain as it was?  Assume it remains as
+            // it was, for now.
+
+            if (lsb >= 0) {
+                if (msb >= 0) {
+                    instance->currentBank = lsb + 128 * msb;
+                } else {
+                    instance->currentBank = lsb + 128 * (instance->currentBank / 128);
+                }
+            } else if (msb >= 0) {
+                instance->currentBank = (instance->currentBank % 128) + 128 * msb;
+            }
+
+            instance->currentProgram = pc;
+
+            instance->pendingProgramChange = -1;
+            instance->pendingBankMSB = -1;
+            instance->pendingBankLSB = -1;
+
+            if (instance->plugin->descriptor->select_program) {
+                instance->plugin->descriptor->
+                    select_program(instanceHandles[instance->number],
+                                   instance->currentBank,
+                                   instance->currentProgram);
+            }
+        }
+    }
+
+    /* call run_synth() or run_multiple_synths() for all instances */
+    i = 0;
+    while (i < instance_count) {
+        if (instances[i].plugin->descriptor->run_multiple_synths) {
+            instances[i].plugin->descriptor->run_multiple_synths
+                (instances[i].plugin->instances,
+                 instanceHandles + i,
+                 nframes,
+                 instanceEventBuffers + i,
+                 instanceEventCounts + i);
+            i += instances[i].plugin->instances;
+        } else {
+            instances[i].plugin->descriptor->run_synth(instanceHandles[i],
+                                                       nframes,
+                                                       instanceEventBuffers[i],
+                                                       instanceEventCounts[i]);
+            i++;
+        }
+    }
 
     assert(sizeof(LADSPA_Data) == sizeof(jack_default_audio_sample_t));
- 
-    for (i = 0; i < outs; ++i) {
+
+    for (i = 0; i < outsTotal; ++i) {
 
 	jack_default_audio_sample_t *buffer =
 	    jack_port_get_buffer(outputPorts[i], nframes);
@@ -331,7 +335,7 @@ load(const char *dllName, void **dll) /* returns directory where dll found */
 {
     char *dssiPath = getenv("DSSI_PATH");
     char *ladspaPath = getenv("LADSPA_PATH");
-    char *path, *origPath, *element;
+    char *path, *origPath, *element, *message;
     void *handle = 0;
 
     if (!dssiPath && !ladspaPath) {
@@ -342,7 +346,7 @@ load(const char *dllName, void **dll) /* returns directory where dll found */
     }
 
     path = (char *)malloc((dssiPath   ? strlen(dssiPath)       : 0) +
-			  (ladspaPath ? strlen(ladspaPath) + 1 : 0)) + 1;
+			  (ladspaPath ? strlen(ladspaPath) + 1 : 0) + 1);
 			  
     sprintf(path, "%s%s%s",
 	    dssiPath ? dssiPath : "",
@@ -366,20 +370,40 @@ load(const char *dllName, void **dll) /* returns directory where dll found */
 	char *filePath = (char *)malloc(strlen(element) + strlen(dllName) + 2);
 	sprintf(filePath, "%s/%s", element, dllName);
 
-	(void)dlerror(); // clear error state
-
-	if ((handle = dlopen(filePath, RTLD_LAZY))) {
+	if ((handle = dlopen(filePath, RTLD_NOW))) {  /* real-time programs should not use RTLD_LAZY */
 	    fprintf(stderr, "found\n");
 	    *dll = handle;
-	    return strdup(element);
+            free(filePath);
+            path = strdup(element);
+            free(origPath);
+	    return path;
 	}
-	
-	const char *err = dlerror();
-	if (err) fprintf(stderr, "nope (%s)\n", err);
-	else fprintf(stderr, "nope\n");
+
+        message = dlerror();
+        if (message) {
+            fprintf(stderr, "\ndssi_example_host: nope (%s)\n", message);
+        } else {
+            fprintf(stderr, "\ndssi_example_host: nope\n");
+        }
+
+        free(filePath);
     }
-    
+
+    free(origPath);
     return 0;
+}
+
+static int
+instance_sort_cmp(const void *a, const void *b)
+{
+    d3h_instance_t *ia = (d3h_instance_t *)a;
+    d3h_instance_t *ib = (d3h_instance_t *)b;
+
+    if (ia->plugin->number != ib->plugin->number) {
+        return ia->plugin->number - ib->plugin->number;
+    } else {
+        return ia->channel - ib->channel;
+    }
 }
 
 void
@@ -393,12 +417,14 @@ startGUI(const char *directory, const char *dllName, const char *label,
     char *filename;
     struct stat buf;
 	
-    if (!strcasecmp(dllBase + strlen(dllBase) - 3, ".so")) {
+    if (strlen(dllBase) > 3 &&
+        !strcasecmp(dllBase + strlen(dllBase) - 3, ".so")) {
 	dllBase[strlen(dllBase) - 3] = '\0';
     }
 
     subpath = (char *)malloc(strlen(directory) + strlen(dllBase) + 2);
     sprintf(subpath, "%s/%s", directory, dllBase);
+    free(dllBase);
 
     if (!(subdir = opendir(subpath))) {
 	fprintf(stderr, "dssi_example_host: can't open plugin GUI directory \"%s\"\n", subpath);
@@ -434,7 +460,6 @@ startGUI(const char *directory, const char *dllName, const char *label,
 
 	    free(filename);
 	    free(subpath);
-	    closedir(subdir);
 	    return;
 	}
 
@@ -444,56 +469,54 @@ startGUI(const char *directory, const char *dllName, const char *label,
     fprintf(stderr, "dssi_example_host: no GUI found for plugin \"%s\" in \"%s/\"\n",
 	    label, subpath);
     free(subpath);
-    closedir(subdir);
 }
 
 void
-query_programs()
+query_programs(d3h_instance_t *instance)
 {
     int i;
 
     /* free old lot */
-    if (pluginPrograms) {
-	free((char *)pluginPrograms);
-	pluginPrograms = 0;
-	pluginProgramCount = 0;
+    if (instance->pluginPrograms) {
+	free((char *)instance->pluginPrograms);
+	instance->pluginPrograms = NULL;
+	instance->pluginProgramCount = 0;
     }
 
-    fprintf(stderr, "dssi_example_host: querying programs\n");
+    instance->pendingBankLSB = -1;
+    instance->pendingBankMSB = -1;
+    instance->pendingProgramChange = -1;
 
-    for (i = 0; i < channelCount; ++i) {
-	programData[i].pendingBankLSB = -1;
-	programData[i].pendingBankMSB = -1;
-	programData[i].pendingProgram = -1;
-    }
-
-    if (pluginDescriptor->get_program && pluginDescriptor->select_program) {
+    if (instance->plugin->descriptor->get_program &&
+        instance->plugin->descriptor->select_program) {
 
 	/* Count the plugins first */
-	for (i = 0; pluginDescriptor->get_program(pluginHandle, i); ++i);
-
-	fprintf(stderr, "dssi_example_host: %d programs found\n", i);
+	for (i = 0; instance->plugin->descriptor->
+                        get_program(instanceHandles[instance->number], i, 0); ++i);
 
 	if (i > 0) {
-	    pluginProgramCount = i;
-	    pluginPrograms = (DSSI_Program_Descriptor *)
+	    instance->pluginProgramCount = i;
+	    instance->pluginPrograms = (DSSI_Program_Descriptor *)
 		malloc(i * sizeof(DSSI_Program_Descriptor));
 	    while (i > 0) {
 		--i;
-		pluginPrograms[i] = *pluginDescriptor->get_program(pluginHandle, i);
-                printf("dssi_example_host: program %d is MIDI bank %lu program %lu, named '%s'\n",
-                       i, pluginPrograms[i].Bank, pluginPrograms[i].Program,
-                       pluginPrograms[i].Name);
+		instance->plugin->descriptor->
+		    get_program(instanceHandles[instance->number], i,
+				instance->pluginPrograms + i);
+                printf("dssi_example_host: %s program %d is MIDI bank %lu program %lu, named '%s'\n",
+                       instance->friendly_name, i,
+                       instance->pluginPrograms[i].Bank,
+                       instance->pluginPrograms[i].Program,
+                       instance->pluginPrograms[i].Name);
 	    }
-	    // select program at index 0 for all channels
-	    for (i = 0; i < channelCount; ++i) {
-		programData[i].bank = pluginPrograms[0].Bank;
-		programData[i].program = pluginPrograms[0].Program;
-		pluginDescriptor->select_program(pluginHandle, i,
-						 programData[i].bank,
-						 programData[i].program);
-		programData[i].programUpdated = 1;
-	    }
+	    // select program at index 0
+            // -FIX- this doesn't belong here, and should try to remember the current bank/program anyway */
+	    instance->currentBank = instance->pluginPrograms[0].Bank;
+	    instance->currentProgram = instance->pluginPrograms[0].Program;
+	    instance->plugin->descriptor->
+                select_program(instanceHandles[instance->number],
+                               instance->currentBank, instance->currentProgram);
+	    instance->uiNeedsProgramUpdate = 1;
 	}
     }
 }
@@ -505,15 +528,17 @@ main(int argc, char **argv)
     int npfd;
     struct pollfd *pfd;
 
+    d3h_dll_t *dll;
+    d3h_plugin_t *plugin;
+    d3h_instance_t *instance;
+    void *pluginObject;
     char *dllName;
-    char *label = 0;
-    void *pluginObject = 0;
-    char *directory;
+    char *label;
     const char **ports;
-    char path_buffer[32];
     char *tmp;
     char *url;
-    int i;
+    int i, reps, j;
+    int in, out, controlIn, controlOut;
 
     setsid();
     sigemptyset (&_signals);
@@ -528,75 +553,209 @@ main(int argc, char **argv)
 
     fprintf(stderr, "dssi_example_host: dssi_example_host starting...\n");
 
+    insTotal = outsTotal = controlInsTotal = controlOutsTotal = 0;
+
     /* Parse args and report usage */
 
-    if (argc < 2 || argc > 3) {
-	fprintf(stderr, "dssi_example_host: Usage: %s dllname [label]\n", argv[0]);
+    if (argc < 2) {
+	fprintf(stderr, "dssi_example_host: Usage: %s [-#] dllname[/label] [...]\n", argv[0]);
 	return 2;
     }
 
-    dllName = argv[1];
-    if (argc > 2) label = argv[2];
+    reps = 1;
+    for (i = 1; i < argc; i++) {
 
-    /* Load plugin DLL and look for requested plugin */
+        if (instance_count >= D3H_MAX_INSTANCES) {
+            fprintf(stderr, "dssi_example_host: too many plugin instances specified\n");
+            return 2;
+        }
 
-    directory = load(dllName, &pluginObject);
+        /* parse repetition count */
+        if (argv[i][0] == '-') {
+            reps = atoi(&argv[i][1]);
+            if (reps > 0) {
+                continue;
+            } else {
+                reps = 1;
+            }
+        }
 
-    if (!directory || !pluginObject) {
-	fprintf(stderr, "dssi_example_host: Error: Failed to load plugin DLL %s\n", dllName);
-	return 1;
+        /* parse dll name, plus a label if supplied */
+        tmp = strchr(argv[i], '/');
+        if (tmp) {
+            dllName = calloc(1, tmp - argv[i] + 1);
+            strncpy(dllName, argv[i], tmp - argv[i]);
+            label = strdup(tmp + 1);
+        } else {
+            dllName = strdup(argv[i]);
+            label = NULL;
+        }
+
+        /* check if we've seen this plugin before */
+        for (plugin = plugins; plugin; plugin = plugin->next) {
+            if (label) {
+                if (!strcmp(dllName, plugin->dll->name) &&
+                    !strcmp(label,   plugin->label))
+                    break;
+            } else {
+               if (!strcmp(dllName, plugin->dll->name) &&
+                   plugin->is_first_in_dll)
+                   break;
+            }
+        }
+
+        if (plugin) {
+            /* have already seen this plugin */
+
+            free(dllName);
+            free(label);
+
+        } else {
+            /* this is a new plugin */
+
+            plugin = (d3h_plugin_t *)calloc(1, sizeof(d3h_plugin_t));
+            plugin->number = plugin_count;
+            plugin->label = label;
+
+            /* check if we've seen this dll before */
+            for (dll = dlls; dll; dll = dll->next) {
+                if (!strcmp(dllName, dll->name))
+                    break;
+            }
+            if (!dll) {
+                /* this is a new dll */
+                dll = (d3h_dll_t *)calloc(1, sizeof(d3h_dll_t));
+                dll->name = dllName;
+                
+                dll->directory = load(dllName, &pluginObject);
+                if (!dll->directory || !pluginObject) {
+                    fprintf(stderr, "dssi_example_host: Error: Failed to load plugin DLL %s\n", dllName);
+                    return 1;
+                }
+                
+                dll->descfn = (DSSI_Descriptor_Function)dlsym(pluginObject,
+                                                              "dssi_descriptor");
+                if (!dll->descfn) {
+                    fprintf(stderr, "dssi_example_host: Error: %s is not a DSSI plugin DLL\n", dllName);
+                    return 1;
+                } 
+
+                dll->next = dlls;
+                dlls = dll;
+            }
+            plugin->dll = dll;
+
+            /* get the plugin descriptor */
+            j = 0;
+            while ((plugin->descriptor = dll->descfn(j++))) {
+                if (!plugin->label ||
+                    !strcmp(plugin->descriptor->LADSPA_Plugin->Label,
+                            plugin->label))
+                    break;
+            }
+            if (!plugin->descriptor) {
+                fprintf(stderr, "dssi_example_host: Error: Plugin label %s not found in DLL %s\n",
+                        plugin->label ? plugin->label : "(none)", dllName);
+                return 1;
+            }
+            plugin->is_first_in_dll = (j = 1);
+            if (!plugin->label) {
+                plugin->label = strdup(plugin->descriptor->LADSPA_Plugin->Label);
+            }
+
+            /* Count number of i/o buffers and ports required */
+            plugin->ins = 0;
+            plugin->outs = 0;
+            plugin->controlIns = 0;
+            plugin->controlOuts = 0;
+ 
+            for (j = 0; j < plugin->descriptor->LADSPA_Plugin->PortCount; j++) {
+
+                LADSPA_PortDescriptor pod =
+                    plugin->descriptor->LADSPA_Plugin->PortDescriptors[j];
+
+                if (LADSPA_IS_PORT_AUDIO(pod)) {
+
+                    if (LADSPA_IS_PORT_INPUT(pod)) ++plugin->ins;
+                    else if (LADSPA_IS_PORT_OUTPUT(pod)) ++plugin->outs;
+
+                } else if (LADSPA_IS_PORT_CONTROL(pod)) {
+
+                    if (LADSPA_IS_PORT_INPUT(pod)) ++plugin->controlIns;
+                    else if (LADSPA_IS_PORT_OUTPUT(pod)) ++plugin->controlOuts;
+                }
+            }
+
+            /* finish up new plugin */
+            plugin->instances = 0;
+            plugin->next = plugins;
+            plugins = plugin;
+            plugin_count++;
+        }
+
+        /* set up instances */
+        for (j = 0; j < reps; j++) {
+            if (instance_count < D3H_MAX_INSTANCES) {
+                instance = &instances[instance_count];
+
+                instance->plugin = plugin;
+                instance->channel = instance_count;
+                tmp = (char *)malloc(strlen(plugin->dll->name) +
+                                     strlen(plugin->label) + 9);
+                instance->friendly_name = tmp;
+                strcpy(tmp, plugin->dll->name);
+                if (strlen(tmp) > 3 &&
+                    !strcasecmp(tmp + strlen(tmp) - 3, ".so")) {
+                    tmp = tmp + strlen(tmp) - 3;
+                } else {
+                    tmp = tmp + strlen(tmp);
+                }
+                sprintf(tmp, "/%s/chan%02d", plugin->label, instance->channel);
+                instance->firstControlIn = controlInsTotal;
+                instance->pluginProgramCount = 0;
+                instance->pluginPrograms = NULL;
+                instance->currentBank = 0;
+                instance->currentProgram = 0;
+                instance->pendingBankLSB = -1;
+                instance->pendingBankMSB = -1;
+                instance->pendingProgramChange = -1;
+                instance->uiTarget = NULL;
+                instance->ui_initial_show_sent = 0;
+                instance->uiNeedsProgramUpdate = 0;
+                instance->ui_osc_control_path = NULL;
+                instance->ui_osc_program_path = NULL;
+                instance->ui_osc_show_path = NULL;
+
+                insTotal += plugin->ins;
+                outsTotal += plugin->outs;
+                controlInsTotal += plugin->controlIns;
+                controlOutsTotal += plugin->controlOuts;
+
+                plugin->instances++;
+                instance_count++;
+            } else {
+                fprintf(stderr, "dssi_example_host: too many plugin instances specified\n");
+                return 2;
+            }
+        }
+        reps = 1;
     }
 
-    DSSI_Descriptor_Function descfn = (DSSI_Descriptor_Function)
-	dlsym(pluginObject, "dssi_descriptor");
-
-    if (!descfn) {
-	fprintf(stderr, "dssi_example_host: Error: %s is not a DSSI plugin DLL\n", dllName);
-	return 1;
-    } 
-
-    for (i = 0; ; ++i) {
-	pluginDescriptor = descfn(i);
-	if (!pluginDescriptor) break;
-	if (!label ||
-	    !strcmp(pluginDescriptor->LADSPA_Plugin->Label, label)) break;
+    /* sort array of instances to group them by plugin */
+    if (instance_count > 1) {
+        qsort(instances, instance_count, sizeof(d3h_instance_t), instance_sort_cmp);
     }
 
-    if (!pluginDescriptor) {
-	fprintf(stderr, "dssi_example_host: Error: Plugin label %s not found in DLL %s\n",
-		label ? label : "(none)", dllName);
-	fprintf(stderr, "dssi_example_host: Available label(s) are:\n");
-	for (i = 0; ; ++i) {
-	    pluginDescriptor = descfn(i);
-	    if (!pluginDescriptor) {
-		if (i == 0) fprintf(stderr, "(none)\n");
-		break;
-	    }
-	    fprintf(stderr, "dssi_example_host: %d: %s\n", i,
-		    pluginDescriptor->LADSPA_Plugin->Label);
-	}
-	return 1;
-    }
-
-    /* Count number of i/o buffers and ports required */
-
-    ins = outs = controlIns = controlOuts = 0;
-
-    for (i = 0; i < pluginDescriptor->LADSPA_Plugin->PortCount; ++i) {
-
-	LADSPA_PortDescriptor pod =
-	    pluginDescriptor->LADSPA_Plugin->PortDescriptors[i];
-
-	if (LADSPA_IS_PORT_AUDIO(pod)) {
-
-	    if (LADSPA_IS_PORT_INPUT(pod)) ++ins;
-	    else if (LADSPA_IS_PORT_OUTPUT(pod)) ++outs;
-
-	} else if (LADSPA_IS_PORT_CONTROL(pod)) {
-
-	    if (LADSPA_IS_PORT_INPUT(pod)) ++controlIns;
-	    else if (LADSPA_IS_PORT_OUTPUT(pod)) ++controlOuts;
-	}
+    /* build channel2instance[] while showing what our instances are */
+    for (i = 0; i < D3H_MAX_CHANNELS; i++)
+        channel2instance[i] = NULL;
+    for (i = 0; i < instance_count; i++) {
+        instance = &instances[i];
+        instance->number = i;
+        channel2instance[instance->channel] = instance;
+        fprintf(stderr, "dssi_example_host: instance %2d on channel %2d, plugin %2d is '%s'\n",
+                i, instance->channel, instance->plugin->number,
+                instance->friendly_name);
     }
 
     /* Create buffers and JACK client and ports */
@@ -606,163 +765,176 @@ main(int argc, char **argv)
 	return 1;
     }
 
-    inputPorts = (jack_port_t **)malloc(ins * sizeof(jack_port_t *));
-    pluginInputBuffers = (float **)malloc(ins * sizeof(float *));
-    pluginControlIns = (float *)calloc(controlIns, sizeof(float));
+    inputPorts = (jack_port_t **)malloc(insTotal * sizeof(jack_port_t *));
+    pluginInputBuffers = (float **)malloc(insTotal * sizeof(float *));
+    pluginControlIns = (float *)calloc(controlInsTotal, sizeof(float));
+    pluginControlInInstances =
+        (d3h_instance_t **)malloc(controlInsTotal * sizeof(d3h_instance_t *));
     pluginControlInPortNumbers =
-	(unsigned long *)malloc(controlIns * sizeof(unsigned long));
-    pluginPortControlInNumbers =
-	(int *)malloc(pluginDescriptor->LADSPA_Plugin->PortCount *
-				sizeof(int));
-    pluginPortUpdated =
-	(int *)malloc(pluginDescriptor->LADSPA_Plugin->PortCount *
-				sizeof(int));
+        (unsigned long *)malloc(controlInsTotal * sizeof(unsigned long));
+    pluginPortUpdated = (int *)malloc(controlInsTotal * sizeof(int));
 
-    outputPorts = (jack_port_t **)malloc(outs * sizeof(jack_port_t *));
-    pluginOutputBuffers = (float **)malloc(outs * sizeof(float *));
-    pluginControlOuts = (float *)calloc(controlOuts, sizeof(float));
-    
-    for (i = 0; i < ins; ++i) {
-	char portName[20];
-	sprintf(portName, "in %d", i+1);
-	inputPorts[i] = jack_port_register(jackClient, portName,
-					   JACK_DEFAULT_AUDIO_TYPE,
-					   JackPortIsInput, 0);
-	pluginInputBuffers[i] =
+    outputPorts = (jack_port_t **)malloc(outsTotal * sizeof(jack_port_t *));
+    pluginOutputBuffers = (float **)malloc(outsTotal * sizeof(float *));
+    pluginControlOuts = (float *)calloc(controlOutsTotal, sizeof(float));
+
+    instanceHandles = (LADSPA_Handle *)malloc(instance_count *
+                                              sizeof(LADSPA_Handle));
+    instanceEventBuffers = (snd_seq_event_t **)malloc(instance_count *
+                                                      sizeof(snd_seq_event_t *));
+    instanceEventCounts = (unsigned long *)malloc(instance_count *
+                                                  sizeof(unsigned long));
+
+    for (i = 0; i < instance_count; i++) {
+        instanceEventBuffers[i] = (snd_seq_event_t *)malloc(EVENT_BUFFER_SIZE *
+                                                            sizeof(snd_seq_event_t));
+        instances[i].pluginPortControlInNumbers =
+            (int *)malloc(instances[i].plugin->descriptor->LADSPA_Plugin->PortCount *
+                          sizeof(int));
+    }
+
+    for (in = 0; in < insTotal; in++) {
+        /* !FIX! this to have more descriptive names */
+        char portName[20];
+        sprintf(portName, "in_%02d", in + 1);
+        inputPorts[in] = jack_port_register(jackClient, portName,
+					    JACK_DEFAULT_AUDIO_TYPE,
+					    JackPortIsInput, 0);
+	pluginInputBuffers[in] =
 	    (float *)calloc(jack_get_buffer_size(jackClient), sizeof(float));
     }
-    
-    for (i = 0; i < outs; ++i) {
+
+    for (out = 0; out < outsTotal; out++) {
+        /* !FIX! this to have more descriptive names */
 	char portName[20];
-	sprintf(portName, "out %d", i+1);
-	outputPorts[i] = jack_port_register(jackClient, portName,
-					    JACK_DEFAULT_AUDIO_TYPE,
-					    JackPortIsOutput, 0);
-	pluginOutputBuffers[i] = 
+	sprintf(portName, "out_%02d", out + 1);
+	outputPorts[out] = jack_port_register(jackClient, portName,
+					      JACK_DEFAULT_AUDIO_TYPE,
+					      JackPortIsOutput, 0);
+	pluginOutputBuffers[out] = 
 	    (float *)calloc(jack_get_buffer_size(jackClient), sizeof(float));
     }
 
     jack_set_process_callback(jackClient, audio_callback, 0);
 
-    channelCount = pluginDescriptor->ChannelCount;
-    if (channelCount == 0) channelCount = 1;
-    programData = (ProgramData *)calloc(channelCount, sizeof(ProgramData));
+    /* Instantiate plugins */
 
-    /* Instantiate plugin */
+    for (i = 0; i < instance_count; i++) {
+        plugin = instances[i].plugin;
+        instanceHandles[i] = plugin->descriptor->LADSPA_Plugin->instantiate
+            (plugin->descriptor->LADSPA_Plugin, jack_get_sample_rate(jackClient));
 
-    pluginHandle = pluginDescriptor->LADSPA_Plugin->instantiate
-	(pluginDescriptor->LADSPA_Plugin, jack_get_sample_rate(jackClient));
-
-    if (!pluginHandle) {
-	fprintf(stderr, "dssi_example_host: Error: Failed to instantiate plugin!\n");
-	return 1;
+        if (!instanceHandles[i]) {
+            fprintf(stderr, "dssi_example_host: Error: Failed to instantiate instance %d!, plugin %s\n",
+                    i, plugin->label);
+            return 1;
+        }
     }
 
     /* Create OSC thread */
 
     serverThread = lo_server_thread_new(NULL, osc_error);
-    snprintf((char *)osc_path, 31, "/dssi/test.1");
+    snprintf((char *)osc_path_tmp, 31, "/dssi");
     tmp = lo_server_thread_get_url(serverThread);
-    url = (char *)malloc(strlen(tmp) + strlen(osc_path));
-    sprintf(url, "%s%s", tmp, osc_path + 1);
+    url = (char *)malloc(strlen(tmp) + strlen(osc_path_tmp));
+    sprintf(url, "%s%s", tmp, osc_path_tmp + 1);
     printf("dssi_example_host: registering %s\n", url);
     free(tmp);
 
-    snprintf(path_buffer, 31, "%s/control", osc_path);
-    lo_server_thread_add_method(serverThread, path_buffer, "if", osc_control_handler, NULL);
-
-    snprintf(path_buffer, 31, "%s/midi", osc_path);
-    lo_server_thread_add_method(serverThread, path_buffer, "m", osc_midi_handler, NULL);
-
-    snprintf(path_buffer, 31, "%s/update", osc_path);
-    lo_server_thread_add_method(serverThread, path_buffer, "s", osc_update_handler, NULL);
-
-    snprintf(path_buffer, 31, "%s/program", osc_path);
-    lo_server_thread_add_method(serverThread, path_buffer, "iii", osc_program_handler, NULL);
-
-    snprintf(path_buffer, 31, "%s/exiting", osc_path);
-    lo_server_thread_add_method(serverThread, path_buffer, "", osc_exiting_handler, NULL);
-
-    snprintf(path_buffer, 31, "%s/configure", osc_path);
-    lo_server_thread_add_method(serverThread, path_buffer, "ss", osc_configure_handler, NULL);
-
-    lo_server_thread_add_method(serverThread, NULL, NULL, osc_debug_handler,
+    lo_server_thread_add_method(serverThread, NULL, NULL, osc_message_handler,
 				NULL);
     lo_server_thread_start(serverThread);
 
-    /* Connect and activate plugin */
+    /* Connect and activate plugins */
 
-    ins = outs = controlIns = controlOuts = 0;
-    
-    for (i = 0; i < MIDI_CONTROLLER_COUNT; ++i) {
-	controllerMap[i] = -1;
+    for (in = 0; in < insTotal; in++) {
+        pluginPortUpdated[in] = 0;
     }
 
-    for (i = 0; i < pluginDescriptor->LADSPA_Plugin->PortCount; ++i) {
+    in = out = controlIn = controlOut = 0;
 
-	LADSPA_PortDescriptor pod =
-	    pluginDescriptor->LADSPA_Plugin->PortDescriptors[i];
+    for (i = 0; i < instance_count; i++) {   /* i is instance number */
+        instance = &instances[i];
 
-	pluginPortControlInNumbers[i] = -1;
-	pluginPortUpdated[i] = 0;
+        for (j = 0; j < MIDI_CONTROLLER_COUNT; j++) {
+            instance->controllerMap[j] = -1;
+        }
 
-	if (LADSPA_IS_PORT_AUDIO(pod)) {
+        plugin = instance->plugin;
+        for (j = 0; j < plugin->descriptor->LADSPA_Plugin->PortCount; j++) {  /* j is LADSPA port number */
 
-	    if (LADSPA_IS_PORT_INPUT(pod)) {
-		pluginDescriptor->LADSPA_Plugin->connect_port
-		    (pluginHandle, i, pluginInputBuffers[ins++]);
+            LADSPA_PortDescriptor pod =
+                plugin->descriptor->LADSPA_Plugin->PortDescriptors[j];
 
-	    } else if (LADSPA_IS_PORT_OUTPUT(pod)) {
-		pluginDescriptor->LADSPA_Plugin->connect_port
-		    (pluginHandle, i, pluginOutputBuffers[outs++]);
-	    }
+            instance->pluginPortControlInNumbers[j] = -1;
 
-	} else if (LADSPA_IS_PORT_CONTROL(pod)) {
+            if (LADSPA_IS_PORT_AUDIO(pod)) {
 
-	    if (LADSPA_IS_PORT_INPUT(pod)) {
+                if (LADSPA_IS_PORT_INPUT(pod)) {
+                    plugin->descriptor->LADSPA_Plugin->connect_port
+                        (instanceHandles[i], j, pluginInputBuffers[in++]);
 
-		if (pluginDescriptor->get_midi_controller_for_port) {
+                } else if (LADSPA_IS_PORT_OUTPUT(pod)) {
+                    plugin->descriptor->LADSPA_Plugin->connect_port
+                        (instanceHandles[i], j, pluginOutputBuffers[out++]);
+                }
 
-		    int controller = pluginDescriptor->
-			get_midi_controller_for_port(pluginHandle, i);
+            } else if (LADSPA_IS_PORT_CONTROL(pod)) {
 
-		    if (controller == 0) {
-			MB_MESSAGE
-			    ("Buggy plugin: wants mapping for bank MSB\n");
-		    } else if (controller == 32) {
-			MB_MESSAGE
-			    ("Buggy plugin: wants mapping for bank LSB\n");
-		    } else if (DSSI_IS_CC(controller)) {
-			controllerMap[DSSI_CC_NUMBER(controller)] = controlIns;
-		    }
-		}
+                if (LADSPA_IS_PORT_INPUT(pod)) {
 
-		pluginControlInPortNumbers[controlIns] = i;
-		pluginPortControlInNumbers[i] = controlIns;
+                    if (plugin->descriptor->get_midi_controller_for_port) {
 
-		pluginControlIns[controlIns] = get_port_default
-		    (pluginDescriptor->LADSPA_Plugin, i);
+                        int controller = plugin->descriptor->
+                            get_midi_controller_for_port(instanceHandles[i], j);
 
-		pluginDescriptor->LADSPA_Plugin->connect_port
-		    (pluginHandle, i, &pluginControlIns[controlIns++]);
+                        if (controller == 0) {
+                            MB_MESSAGE
+                                ("Buggy plugin: wants mapping for bank MSB\n");
+                        } else if (controller == 32) {
+                            MB_MESSAGE
+                                ("Buggy plugin: wants mapping for bank LSB\n");
+                        } else if (DSSI_IS_CC(controller)) {
+                            instance->controllerMap[DSSI_CC_NUMBER(controller)]
+                                = controlIn;
+                        }
+                    }
 
-	    } else if (LADSPA_IS_PORT_OUTPUT(pod)) {
-		pluginDescriptor->LADSPA_Plugin->connect_port
-		    (pluginHandle, i, &pluginControlOuts[controlOuts++]);
-	    }
-	}
-    }
+                    pluginControlInInstances[controlIn] = instance;
+                    pluginControlInPortNumbers[controlIn] = j;
+                    instance->pluginPortControlInNumbers[j] = controlIn;
 
-    if (pluginDescriptor->LADSPA_Plugin->activate) {
-	pluginDescriptor->LADSPA_Plugin->activate(pluginHandle);
-    }
+                    pluginControlIns[controlIn] = get_port_default
+                        (plugin->descriptor->LADSPA_Plugin, j);
+
+                    plugin->descriptor->LADSPA_Plugin->connect_port
+                        (instanceHandles[i], j, &pluginControlIns[controlIn++]);
+
+                } else if (LADSPA_IS_PORT_OUTPUT(pod)) {
+                    plugin->descriptor->LADSPA_Plugin->connect_port
+                        (instanceHandles[i], j, &pluginControlOuts[controlOut++]);
+                }
+            }
+        }  /* 'for (j...'  LADSPA port number */
+
+        if (plugin->descriptor->LADSPA_Plugin->activate) {
+            plugin->descriptor->LADSPA_Plugin->activate(instanceHandles[i]);
+        }
+    } /* 'for (i...' instance number */
+    assert(in == insTotal);
+    assert(out == outsTotal);
+    assert(controlIn == controlInsTotal);
+    assert(controlOut == controlOutsTotal);
 
     /* Look up synth programs */
-    
-    query_programs();
+
+    for (i = 0; i < instance_count; i++) {
+        query_programs(&instances[i]);
+    }
 
     /* Create ALSA MIDI port */
 
+#if !(defined(__MACH__) && defined(__APPLE__))
     if (snd_seq_open(&alsaClient, "hw", SND_SEQ_OPEN_DUPLEX, 0) < 0) {
 	fprintf(stderr, "dssi_example_host: Error: Failed to open ALSA sequencer interface\n");
 	return 1;
@@ -780,6 +952,7 @@ main(int argc, char **argv)
     npfd = snd_seq_poll_descriptors_count(alsaClient, POLLIN);
     pfd = (struct pollfd *)alloca(npfd * sizeof(struct pollfd));
     snd_seq_poll_descriptors(alsaClient, pfd, npfd, POLLIN);
+#endif
 
     mb_init("host: ");
 
@@ -788,22 +961,20 @@ main(int argc, char **argv)
         exit(1);
     }
 
+    /* activate JACK and connect ports */
+    /* !FIX! this to more intelligently connect ports: */
     ports = jack_get_ports(jackClient, NULL, NULL,
-                                      JackPortIsPhysical|JackPortIsInput);    
-    for (i = 0; i < outs; ++i) {
-      if (ports) {
-          if (ports[i]) {
-              if (jack_connect(jackClient, jack_port_name(outputPorts[i]),
-			       ports[i])) {
-                    fprintf (stderr, "cannot connect output port %d\n", i);
-              }
-          } else {
-              free(ports);
-              ports = NULL;
-          }
-      }
+                           JackPortIsPhysical|JackPortIsInput);
+    if (ports && ports[0]) {
+        for (i = 0, j = 0; i < outsTotal; ++i) {
+            if (jack_connect(jackClient, jack_port_name(outputPorts[i]),
+                             ports[j])) {
+                fprintf (stderr, "cannot connect output port %d\n", i);
+            }
+            if (!ports[++j]) j = 0;
+        }
+        free(ports);
     }
-    if (ports) free(ports);
 
     signal(SIGINT, signalHandler);
     signal(SIGTERM, signalHandler);
@@ -812,42 +983,54 @@ main(int argc, char **argv)
     pthread_sigmask(SIG_UNBLOCK, &_signals, 0);
 
     /* Attempt to locate and start up a GUI for the plugin -- but
-       continue even if we can't */
-
-    startGUI(directory, dllName, pluginDescriptor->LADSPA_Plugin->Label, url);
+     * continue even if we can't */
+    /* -FIX- Ack! So many windows all at once! */
+    for (i = 0; i < instance_count; i++) {
+        plugin = instances[i].plugin;
+        snprintf(osc_path_tmp, 1024, "%s/%s", url, instances[i].friendly_name);
+        startGUI(plugin->dll->directory, plugin->dll->name,
+                 plugin->descriptor->LADSPA_Plugin->Label, osc_path_tmp);
+    }
 
     MB_MESSAGE("Ready\n");
 
     while (1) {
+#if !(defined(__MACH__) && defined(__APPLE__))
 	if (poll(pfd, npfd, 100) > 0) {
 	    midi_callback();
 	}
+#endif
 
 	/* Race conditions here, because the programs and ports are
 	   updated from the audio thread.  We at least try to minimise
 	   trouble by copying out before the expensive OSC call */
 
-	if (uiTarget) {
+        for (i = 0; i < instance_count; i++) {
+            instance = &instances[i];
+            if (instance->uiNeedsProgramUpdate && instance->pendingProgramChange < 0) {
+                int bank = instance->currentBank;
+                int program = instance->currentProgram;
+                instance->uiNeedsProgramUpdate = 0;
+                if (instance->uiTarget) {
+                    lo_send(instance->uiTarget, instance->ui_osc_program_path, "ii", bank, program);
+                }
+            }
+        }
 
-	    for (i = 0; i < channelCount; ++i) {
-		if (programData[i].programUpdated) {
-		    int bank = programData[i].bank;
-		    int program = programData[i].program;
-		    programData[i].programUpdated = 0;
-		    lo_send(uiTarget, gui_osc_program_path, "iii", i, bank, program);
-		}
-	    }
-
-	    for (i = 0; i < controlIns; ++i) {
-		if (pluginPortUpdated[pluginControlInPortNumbers[i]]) {
-		    int port = pluginControlInPortNumbers[i];
-		    float value = pluginControlIns[i];
-		    pluginPortUpdated[pluginControlInPortNumbers[i]] = 0;
-		    lo_send(uiTarget, gui_osc_control_path, "if", port, value);
+	for (i = 0; i < controlInsTotal; ++i) {
+	    if (pluginPortUpdated[i]) {
+                instance = pluginControlInInstances[i];
+		int port = pluginControlInPortNumbers[i];
+		float value = pluginControlIns[i];
+		pluginPortUpdated[i] = 0;
+		if (instance->uiTarget) {
+		    lo_send(instance->uiTarget, instance->ui_osc_control_path, "if", port, value);
 		}
 	    }
 	}
     }
+
+    return 0;
 }
 
 LADSPA_Data get_port_default(const LADSPA_Descriptor *plugin, int port)
@@ -915,62 +1098,79 @@ LADSPA_Data get_port_default(const LADSPA_Descriptor *plugin, int port)
 
 void osc_error(int num, const char *msg, const char *path)
 {
-    printf("dssi_example_host: liblo server error %d in path %s: %s\n", num, path, msg);
+    fprintf(stderr, "dssi_example_host: liblo server error %d in path %s: %s\n", num, path, msg);
 }
 
-int osc_midi_handler(const char *path, const char *types, lo_arg **argv, int argc,
-		     void *data, void *user_data) 
+// smbolton: Hmm, from the OpenSound Control Specification, v1.0:
+// 
+//     An application that does use any additional [non-standard]
+//     argument types must encode them with the OSC Type Tags in this
+//     table:
+// 
+//     OSC Type Tag   Type of corresponding argument
+// 
+//     m              4 byte MIDI message. Bytes from MSB to LSB are:
+//                    port id, status byte, data1, data2
+// 
+// which would mean we should start encoding from &argv[0]->m[1], and
+// not allow running status.
+
+int
+osc_midi_handler(d3h_instance_t *instance, lo_arg **argv)
 {
-    /* Normally a host would have one of these per plugin instance */
-    static snd_midi_event_t *alsaCoder = 0;
+    static snd_midi_event_t *alsaCoder = NULL;
     static snd_seq_event_t alsaEncodeBuffer[10];
-    long count, i;
+    long count;
+    snd_seq_event_t *ev = &alsaEncodeBuffer[0];
+
+    printf("dssi_example_host: OSC: got midi request for %s (%02x %02x %02x %02x)\n",
+           instance->friendly_name, argv[0]->m[0], argv[0]->m[1], argv[0]->m[2], argv[0]->m[3]);
 
     if (!alsaCoder) {
-	snd_midi_event_new(10, &alsaCoder);
-	if (!alsaCoder) {
-	    fprintf(stderr, "dssi_example_host: Failed to initialise ALSA MIDI coder!\n");
-	    return 0;
-	}
+        if (snd_midi_event_new(10, &alsaCoder)) {
+            fprintf(stderr, "dssi_example_host: Failed to initialise ALSA MIDI coder!\n");
+            return 0;
+        }
     }
 
+    snd_midi_event_reset_encode(alsaCoder);
+
     count = snd_midi_event_encode
-	(alsaCoder, (argv[0]->m)+1, 3, alsaEncodeBuffer);
+	(alsaCoder, (argv[0]->m) + 1, 3, alsaEncodeBuffer);
+
+    if (!count || !snd_seq_ev_is_channel_type(ev)) {
+        return 0;
+    }
+
+    /* substitute correct MIDI channel */
+    ev->data.note.channel = instance->channel;
     
+    if (ev->type == SND_SEQ_EVENT_NOTEON && ev->data.note.velocity == 0) {
+        ev->type =  SND_SEQ_EVENT_NOTEOFF;
+    }
+        
     pthread_mutex_lock(&midiEventBufferMutex);
 
-    for (i = 0; i < count; ++i) {
-	
-	snd_seq_event_t *ev = &alsaEncodeBuffer[i];
+    if (midiEventReadIndex == midiEventWriteIndex + 1) {
 
-	if (midiEventReadIndex == midiEventWriteIndex + 1) {
-	    fprintf(stderr, "dssi_example_host: Warning: MIDI event buffer overflow!\n");
-	    continue;
-	}
+        fprintf(stderr, "dssi_example_host: Warning: MIDI event buffer overflow!\n");
 
-	if (ev->type == SND_SEQ_EVENT_CONTROLLER) {
+    } else if (ev->type == SND_SEQ_EVENT_CONTROLLER &&
+               (ev->data.control.param == 0 || ev->data.control.param == 32)) {
 
-	    int controller = ev->data.control.param;
-	    
-	    if (controller == 0 || controller == 32) {
-		fprintf(stderr, "dssi_example_host: Warning: UI sent bank select controller (should use /program OSC call), ignoring\n");
-		continue;
-	    }
+        fprintf(stderr, "dssi_example_host: Warning: %s UI sent bank select controller (should use /program OSC call), ignoring\n",
+                instance->friendly_name);
 
-	} else if (ev->type == SND_SEQ_EVENT_PGMCHANGE) {
+    } else if (ev->type == SND_SEQ_EVENT_PGMCHANGE) {
 
-	    fprintf(stderr, "dssi_example_host: Warning: UI sent program change (should use /program OSC call), ignoring\n");
-	    continue;
-	}
+        fprintf(stderr, "dssi_example_host: Warning: %s UI sent program change (should use /program OSC call), ignoring\n",
+                instance->friendly_name);
 
-	midiEventBuffer[midiEventWriteIndex] = *ev;
-	ev = &midiEventBuffer[midiEventWriteIndex];
-	
-	if (ev->type == SND_SEQ_EVENT_NOTEON && ev->data.note.velocity == 0) {
-	    ev->type =  SND_SEQ_EVENT_NOTEOFF;
-	}
-	
-	midiEventWriteIndex = (midiEventWriteIndex + 1) % EVENT_BUFFER_SIZE;
+    } else {
+
+        midiEventBuffer[midiEventWriteIndex] = *ev;
+        midiEventWriteIndex = (midiEventWriteIndex + 1) % EVENT_BUFFER_SIZE;
+
     }
 
     pthread_mutex_unlock(&midiEventBufferMutex);
@@ -978,164 +1178,153 @@ int osc_midi_handler(const char *path, const char *types, lo_arg **argv, int arg
     return 0;
 }
 
-
-int osc_control_handler(const char *path, const char *types, lo_arg **argv, int argc,
-			void *data, void *user_data) 
+int
+osc_control_handler(d3h_instance_t *instance, lo_arg **argv)
 {
     int port = argv[0]->i;
     LADSPA_Data value = argv[1]->f;
 
-    if (port < 0 || port > pluginDescriptor->LADSPA_Plugin->PortCount) {
-	fprintf(stderr, "dssi_example_host: OSC: port number (%d) is out of range\n", port);
+    if (port < 0 || port > instance->plugin->descriptor->LADSPA_Plugin->PortCount) {
+	fprintf(stderr, "dssi_example_host: OSC: %s port number (%d) is out of range\n",
+                instance->friendly_name, port);
 	return 0;
     }
-    if (pluginPortControlInNumbers[port] == -1) {
-	fprintf(stderr, "dssi_example_host: OSC: port %d is not a control in\n", port);
+    if (instance->pluginPortControlInNumbers[port] == -1) {
+	fprintf(stderr, "dssi_example_host: OSC: %s port %d is not a control in\n",
+                instance->friendly_name, port);
 	return 0;
     }
-    pluginControlIns[pluginPortControlInNumbers[port]] = value;
-    printf("dssi_example_host: OSC: port %d = %f\n", port, value);
+    pluginControlIns[instance->pluginPortControlInNumbers[port]] = value;
+    printf("dssi_example_host: OSC: %s port %d = %f\n", instance->friendly_name,
+           port, value);
     
     return 0;
 }
 
-int osc_program_handler(const char *path, const char *types, lo_arg **argv, int argc,
-			void *data, void *user_data) 
+int
+osc_program_handler(d3h_instance_t *instance, lo_arg **argv)
 {
-    int channel = argv[0]->i;
-    int bank = argv[1]->i;
-    int program = argv[2]->i;
+    int bank = argv[0]->i;
+    int program = argv[1]->i;
     int i;
     int found = 0;
 
-    if (pluginDescriptor->ChannelCount == 0) channel = 0;
-
-    if (channel < 0 || channel >= channelCount) {
-	printf("dssi_example_host: OSC: UI requested program change on invalid channel %d (range is 0-%d)\n", channel, channelCount);
-	return 1;
-    }
-
-    for (i = 0; i < pluginProgramCount; ++i) {
-	if (pluginPrograms[i].Bank == bank &&
-	    pluginPrograms[i].Program == program) {
-	    printf("dssi_example_host: OSC: setting bank %d, program %d, name %s\n", bank, program,
-		   pluginPrograms[i].Name);
+    for (i = 0; i < instance->pluginProgramCount; ++i) {
+	if (instance->pluginPrograms[i].Bank == bank &&
+	    instance->pluginPrograms[i].Program == program) {
+	    printf("dssi_example_host: OSC: %s setting bank %d, program %d, name %s\n",
+                   instance->friendly_name, bank, program,
+                   instance->pluginPrograms[i].Name);
 	    found = 1;
 	    break;
 	}
     }
 
     if (!found) {
-	printf("dssi_example_host: OSC: UI requested unknown program: bank %d, program %d: sending to plugin anyway (plugin should ignore it)\n",
-		bank, program);
+	printf("dssi_example_host: OSC: %s UI requested unknown program: bank %d, program %d: sending to plugin anyway (plugin should ignore it)\n",
+		instance->friendly_name, bank, program);
     }
 
-    programData[channel].pendingBankMSB = bank / 128;
-    programData[channel].pendingBankLSB = bank % 128;
-    programData[channel].pendingProgram = program;
+    instance->pendingBankMSB = bank / 128;
+    instance->pendingBankLSB = bank % 128;
+    instance->pendingProgramChange = program;
 
     return 0;
 }
 
-int osc_configure_handler(const char *path, const char *types, lo_arg **argv, int argc,
-			  void *data, void *user_data) 
+int
+osc_configure_handler(d3h_instance_t *instance, lo_arg **argv)
 {
     const char *key = (const char *)&argv[0]->s;
     const char *value = (const char *)&argv[1]->s;
     char *message;
 
     /* This is the simplest legal implementation of configure in a
-       DSSI host.  The host has the option to remember the set of
-       (key,value) pairs associated with a particular instance, so
-       that if it wants to restore the "same" instance on another
-       occasion it can just call configure() on it for each of those
-       pairs and so restore state without any input from a GUI.  Any
-       real-world GUI host will probably want to do that.  This host
-       doesn't have any concept of restoring an instance from one run
-       to the next, so we don't bother remembering these at all. */
-    
-    if (pluginDescriptor->configure) {
+     * DSSI host.  The host has the option to remember the set of
+     * (key,value) pairs associated with a particular instance, so
+     * that if it wants to restore the "same" instance on another
+     * occasion it can just call configure() on it for each of those
+     * pairs and so restore state without any input from a GUI.  Any
+     * real-world GUI host will probably want to do that.  This host
+     * doesn't have any concept of restoring an instance from one run
+     * to the next, so we don't bother remembering these at all. */
 
-	message = pluginDescriptor->configure(pluginHandle, key, value);
+    if (instance->plugin->descriptor->configure) {
+
+	message = instance->plugin->descriptor->configure
+                      (instanceHandles[instance->number], key, value);
         if (message) {
-            printf("dssi_example_host: on configure '%s' '%s', plugin returned '%s'\n",
-                   message, key, value);
+            printf("dssi_example_host: on configure '%s' '%s', plugin '%s' returned '%s'\n",
+                   key, value, instance->friendly_name, message);
             free(message);
         }
 
 	/* configure invalidates bank and program information, so
 	   we should do this again now: */
-	query_programs();
+	query_programs(instance);
     }
 
     return 0;
 }
 
-int osc_update_handler(const char *path, const char *types, lo_arg **argv, int argc,
-		       void *data, void *user_data) 
+int
+osc_update_handler(d3h_instance_t *instance, lo_arg **argv)
 {
     const char *url = (char *)&argv[0]->s;
+    const char *path;
     unsigned int i;
     char *host, *port;
-    static int first_update = 1; /* should be per-UI, but we only support one */
 
     printf("dssi_example_host: OSC: got update request from <%s>\n", url);
 
+    if (instance->uiTarget) lo_address_free(instance->uiTarget);
     host = lo_url_get_hostname(url);
     port = lo_url_get_port(url);
-    uiTarget = lo_target_new(host, port);
+    instance->uiTarget = lo_address_new(host, port);
     free(host);
     free(port);
 
     path = lo_url_get_path(url);
 
-    if (gui_osc_control_path) free(gui_osc_control_path);
-    gui_osc_control_path = (char *)malloc(strlen(path) + 10);
-    sprintf(gui_osc_control_path, "%s/control", path);
+    if (instance->ui_osc_control_path) free(instance->ui_osc_control_path);
+    instance->ui_osc_control_path = (char *)malloc(strlen(path) + 10);
+    sprintf(instance->ui_osc_control_path, "%s/control", path);
 
-    if (gui_osc_program_path) free(gui_osc_program_path);
-    gui_osc_program_path = (char *)malloc(strlen(path) + 10);
-    sprintf(gui_osc_program_path, "%s/program", path);
+    if (instance->ui_osc_program_path) free(instance->ui_osc_program_path);
+    instance->ui_osc_program_path = (char *)malloc(strlen(path) + 10);
+    sprintf(instance->ui_osc_program_path, "%s/program", path);
 
-    if (gui_osc_show_path) free(gui_osc_show_path);
-    gui_osc_show_path = (char *)malloc(strlen(path) + 10);
-    sprintf(gui_osc_show_path, "%s/show", path);
+    if (instance->ui_osc_show_path) free(instance->ui_osc_show_path);
+    instance->ui_osc_show_path = (char *)malloc(strlen(path) + 10);
+    sprintf(instance->ui_osc_show_path, "%s/show", path);
 
     free((char *)path);
 
-    for (i = 0; i < controlIns; i++) {
-	int port = pluginControlInPortNumbers[i];
-	lo_send(uiTarget, gui_osc_control_path, "if", port, pluginControlIns[i]);
+    /* -FIX- should send the current program here, no? */
+
+    for (i = 0; i < instance->plugin->controlIns; i++) {
+        int in = i + instance->firstControlIn;
+	int port = pluginControlInPortNumbers[in];
+	lo_send(instance->uiTarget, instance->ui_osc_control_path, "if", port,
+                pluginControlIns[in]);
     }
 
-    for (i = 0; i < channelCount; ++i) {
-	lo_send(uiTarget, gui_osc_program_path, "iii", i,
-		programData[i].bank, programData[i].program);
-    }
-
-    if (first_update) {
-	lo_send(uiTarget, gui_osc_show_path, "");
-	first_update = 0;
+    if (!instance->ui_initial_show_sent) {
+	lo_send(instance->uiTarget, instance->ui_osc_show_path, "");
+	instance->ui_initial_show_sent = 1;
     }
 
     /* At this point a more substantial host might also call
-       configure() on the UI to set any state that it had remembered
-       for the plugin instance.  But we don't remember state for
-       plugin instances (see our own configure() implementation in
-       osc_configure_handler), and so we have nothing to send. */
+     * configure() on the UI to set any state that it had remembered
+     * for the plugin instance.  But we don't remember state for
+     * plugin instances (see our own configure() implementation in
+     * osc_configure_handler), and so we have nothing to send. */
 
     return 0;
 }
 
-int osc_exiting_handler(const char *path, const char *types, lo_arg **argv,
-		      int argc, void *data, void *user_data)
-{
-    printf("dssi_example_host: UI is exiting; let's go too\n");
-    exit(0);
-}
-
 int osc_debug_handler(const char *path, const char *types, lo_arg **argv,
-		      int argc, void *data, void *user_data)
+                      int argc, void *data, void *user_data)
 {
     int i;
 
@@ -1143,9 +1332,59 @@ int osc_debug_handler(const char *path, const char *types, lo_arg **argv,
     for (i=0; i<argc; i++) {
         printf("dssi_example_host: arg %d '%c' ", i, types[i]);
         lo_arg_pp(types[i], argv[i]);
-        printf("dssi_example_host: \n"); 
+        printf("\n");
     }
-    printf("dssi_example_host: \n");
+    printf("dssi_example_host:\n");
 
     return 1;
 }
+
+int osc_message_handler(const char *path, const char *types, lo_arg **argv,
+                        int argc, void *data, void *user_data)
+{
+    int i;
+    d3h_instance_t *instance = NULL;
+    const char *method;
+
+    if (strncmp(path, "/dssi/", 6))
+        return osc_debug_handler(path, types, argv, argc, data, user_data);
+
+    for (i = 0; i < instance_count; i++) {
+        if (!strncmp(path + 6, instances[i].friendly_name,
+                     strlen(instances[i].friendly_name))) {
+            instance = &instances[i];
+            break;
+        }
+    }
+    if (!instance)
+        return osc_debug_handler(path, types, argv, argc, data, user_data);
+
+    method = path + 6 + strlen(instance->friendly_name);
+    if (*method != '/' || *(method + 1) == 0)
+        return osc_debug_handler(path, types, argv, argc, data, user_data);
+    method++;
+
+    if (!strcmp(method, "configure") && argc == 2 && !strcmp(types, "ss")) {
+
+        return osc_configure_handler(instance, argv);
+
+    } else if (!strcmp(method, "control") && argc == 2 && !strcmp(types, "if")) {
+
+        return osc_control_handler(instance, argv);
+
+    } else if (!strcmp(method, "midi") && argc == 1 && !strcmp(types, "m")) {
+
+        return osc_midi_handler(instance, argv);
+
+    } else if (!strcmp(method, "program") && argc == 2 && !strcmp(types, "ii")) {
+
+        return osc_program_handler(instance, argv);
+
+    } else if (!strcmp(method, "update") && argc == 1 && !strcmp(types, "s")) {
+
+        return osc_update_handler(instance, argv);
+
+    }
+    return osc_debug_handler(path, types, argv, argc, data, user_data);
+}
+

@@ -10,7 +10,7 @@ TARGETS = \
 
 all: $(TARGETS)
 
-CFLAGS = -Wall -g3 -O3 -I../dssi $(shell pkg-config liblo --cflags)
+CFLAGS = -Wall -g3 -I../dssi $(shell pkg-config liblo --cflags)
 CXXFLAGS = $(CFLAGS) -I$(QTDIR)/include
 
 LDLIBS = -ljack -lasound -lpthread $(shell pkg-config liblo --libs)
@@ -22,7 +22,7 @@ dssi_osc_send:	dssi_osc_send.o message_buffer.o
 
 dssi_osc_update:	dssi_osc_update.o message_buffer.o
 
-dssi_example_host.o:	../dssi/dssi.h
+dssi_example_host.o:	../dssi/dssi.h dssi_example_host.h
 
 less_trivial_synth_qt_gui.o:	less_trivial_synth_qt_gui.h
 

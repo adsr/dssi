@@ -19,8 +19,9 @@ a handful of public-domain example files including an almost complete
 (but not pretty) host implementation and a simple synth plugin with a
 GUI.  The API itself is licensed under the LGPL.
 
-This proposal was constructed by Steve Harris (steve@plugin.org.uk)
-and Chris Cannam (cannam@all-day-breakfast.com).
+This proposal was constructed by Steve Harris (steve <at> plugin <dot>
+org <dot> uk), Chris Cannam (cannam@all-day-breakfast.com), and Sean
+Bolton (musound <at> jps <dot> net).
 
 
 Background and Requirements
@@ -156,8 +157,21 @@ The DSSI Proposal In Brief
   and enabling the host to query the various additional bits of
   non-MIDI non-audio information it needs.)
 
-The above two parts of the proposal are documented thoroughly in the
+* Provide for synchronization and resource sharing between multiple
+  instantiations of a single plugin.  (Thus allowing for such things
+  as complex voice allocation/stealing algorithms and the sharing of
+  large wavetables between what would otherwise be independent
+  single-channel plugin instances.)
+
+The above three parts of the proposal are documented thoroughly in the
 dssi.h header file.
+
+* Define in which contexts a DSSI host may call the DSSI and LADSPA
+  API functions, so that proper multi-threaded and multi-processor
+  implementations may be developed with a minimum of overhead.
+
+This part of the proposal is documented in the 'DSSI Multi-thread /
+Multi-process Considerations' section below.
 
 * Make the plugin UI a separate standalone program, that communicates
   with the host (_not_ directly with the plugin) via Open Sound Control
@@ -166,8 +180,101 @@ dssi.h header file.
   automatable by the host, and in principle permitting plugins to be
   controlled by other OSC clients as well.)
 
-This part of the proposal is documented below.
+This part of the proposal is documented in the 'DSSI Synth UIs'
+section below.
 
+DSSI Multi-thread / Multi-process Considerations
+------------------------------------------------
+
+Most DSSI hosts will be multi-threaded applications, and an ideal
+DSSI host would be able to take advantage of multiple processors.
+Developers of DSSI hosts and plugins must therefore implement
+appropriate interprocess synchronization measures, which should be
+as minimal and efficient as possible while allowing safe
+multi-threaded operation.  Therefore, a clear delineation of
+responsibility in this regard between host and plugin is needed. To
+this end, each of the DSSI or LADSPA API functions is assigned to
+one of three 'contexts', and restrictions are placed on when a host
+may make simultaneous calls to these functions, based on to which
+contexts the functions belong.  The three contexts are:
+
+1. Initialization Context:    [!FIX! can we think of a better name?]
+
+   This context involves the instantiation and setup of plugins
+   before they are run, and their cleanup and disinstantiation when
+   they are no longer to be used.  The functions assigned to the
+   initialization context are:
+
+        activate()
+        cleanup()
+        connect_port()
+        deactivate()
+        instantiate()
+
+2. Control Context:
+
+   This context includes those functions which control the behaviour
+   of an active or running plugin, yet (for real-time plugins) are not
+   expected to run in real time. The control context functions are:
+
+        configure()
+        get_midi_controller_for_port()
+        get_program()
+        set_run_adding_gain()   [!FIX! does this belong here or in the audio context?]
+
+3. Audio Context:
+
+   This context typically would be the 'audio' or 'real-time'
+   thread(s) of a DSSI system.  The audio context functions are:
+
+        run()
+        run_adding()
+        run_synth()
+        run_synth_adding()
+        run_multiple_synths()
+        run_multiple_synths_adding()
+        select_program()
+
+Host Restrictions:
+
+The restrictions detailed below apply to each 'instance group'
+within a running DSSI system.  When a host is using
+run_multiple_synths() with a particular plugin, then the instance
+group includes all active instances of that plugin.  When a plugin
+does not support run_multiple_synths(), or when it supplies both 
+run_synth() and run_multiple_synths() but the host chooses not to
+use run_multiple_synths(), then each instance of the plugin is its
+own instance group.
+
+The restrictions that a DSSI host must observe within each instance
+group are:
+
+1. While one function within a particular context is being executed,
+   the host may not call any other functions of that context.  Thus
+   (for example), an instance group of plugins can assume that
+   get_program() will not be called for any instance while a
+   configure() call is still executing, and that select_program()
+   will not be called for any instance while any of the run*()
+   functions are executing,
+
+2. While a function in the initialization context is being run, the
+   host may not call any funtions of the other two contexts, and
+   vice versa.  Thus, a plugin need not guard against simultaneous
+   calls to e.g. configure() or run_synth() while in connect_port().
+
+Plugin Restrictions:
+
+Because it is permissible for a host to simultaneously call one
+control context function and one audio context function (per
+instance group), it is the responsibility of the plugin to ensure
+that its internal data structures are appropriately protected (with
+e.g. mutexes or multi-thread-safe queues).
+
+Also, all of the audio context functions provided by a plugin must
+obey restrictions similar to those placed on 'hard real-time' LADSPA
+plugins: no malloc() or free(), no libraries other than libc or
+libm, and no blocking I/O. (Unless, of course, the plugin is not
+intended for real-time operation.)
 
 DSSI Synth UIs
 --------------
@@ -230,12 +337,17 @@ consisting of:
     for the correct plugin instance (see Paths and Methods below)
   * the name of the .so in which the plugin was found (here PLUGINS.so)
   * the label of the plugin (here PLUGIN).
+  * a "user friendly" identifier which the UI may display to allow a
+      user to easily associate this particular UI instance with the
+      correct plugin instance as it is represented by the host (e.g.
+      "track 1" or "channel 4").
 
 If the UI supports the show/hide mechanism (which any graphical UI
 should), then it should initially be in hidden state.  The UI then
-requests an update, passing its own OSC URL and base path to the host;
-the host responds by sending the current values of all the ports.  The
-host must then call show() on the UI and startup is complete.
+requests an update, passing its own OSC URL and base path to the
+host; the host responds by sending the current configure, program
+and control values.  The host must then call show() on the UI
+and startup is complete.
 
 3. Paths and Methods
 
@@ -261,16 +373,16 @@ These are the methods the host may support:
   argument for port number and a float for value.  (required method)
 
   <base path>/program
-  Make a program change on the plugin.  Takes three int arguments, for
-  channel, bank, and program number.  (required method)
+  Make a program change on the plugin.  Takes two int arguments, for
+  bank and program number.  (required method)
 
   <base path>/update
   Request an update on the UI.  Takes one string argument, the UI's
   own OSC URL with base path.  The host should respond by sending the
-  current state of the plugin to the UI in a series of control and
-  program OSC calls.  (required method, and the UI is required to
-  use it)
-  
+  current state of the plugin to the UI in a series of configure,
+  program, and control OSC calls.  (required method, and the UI is
+  required to use it)
+
   <base path>/configure
   Make a configure() call to the plugin.  Takes two string arguments
   for key and value.  See the documentation for configure() in dssi.h.
@@ -298,10 +410,10 @@ And these are the methods the UI may support:
   argument for port number and float for value.  (required method)
 
   <base path>/program
-  Update the UI from an automated program change.  Takes three int
-  arguments, for channel, bank, and program number.  (required method
-  if the plugin supports program changes)
-  
+  Update the UI from an automated program change.  Takes an int
+  argument for bank number and int for value.  (required method if
+  the plugin supports program changes)
+
   <base path>/configure
   Used to notify a UI of the current configure state of the plugin.
   If the host has set any configure data on the plugin at startup

@@ -3,7 +3,7 @@
 /* trivial_synth.c
 
    Disposable Hosted Soft Synth API
-   Constructed by Chris Cannam and Steve Harris
+   Constructed by Chris Cannam, Steve Harris and Sean Bolton
 
    This is an example DSSI synth plugin written by Steve Harris.
 
@@ -257,13 +257,15 @@ void _init()
     tsDDescriptor = (DSSI_Descriptor *) malloc(sizeof(DSSI_Descriptor));
     if (tsDDescriptor) {
 	tsDDescriptor->DSSI_API_Version = 1;
-	tsDDescriptor->ChannelCount = 0;
 	tsDDescriptor->LADSPA_Plugin = tsLDescriptor;
 	tsDDescriptor->configure = NULL;
 	tsDDescriptor->get_program = NULL;
 	tsDDescriptor->get_midi_controller_for_port = getControllerTS;
 	tsDDescriptor->select_program = NULL;
 	tsDDescriptor->run_synth = runTS;
+	tsDDescriptor->run_synth_adding = NULL;
+	tsDDescriptor->run_multiple_synths = NULL;
+	tsDDescriptor->run_multiple_synths_adding = NULL;
     }
 }
 
