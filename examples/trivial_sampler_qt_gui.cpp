@@ -45,6 +45,7 @@ using std::endl;
 
 #define Sampler_PORT_BASE_PITCH    1
 #define Sampler_PORT_SUSTAIN       2
+#define Sampler_PORT_RELEASE       3
 
 lo_server osc_server = 0;
 
@@ -69,6 +70,7 @@ SamplerGUI::SamplerGUI(QString host, QString port,
     layout->addWidget(new QLabel("Sample file:  ", this), 0, 0, Qt::AlignRight);
     layout->addWidget(new QLabel("Base MIDI pitch:  ", this), 1, 0, Qt::AlignRight);
     layout->addWidget(new QLabel("Sustain:  ", this), 2, 0, Qt::AlignRight);
+    layout->addWidget(new QLabel("Release time:  ", this), 3, 0, Qt::AlignRight);
 
     m_sampleFile = new QLabel(NO_SAMPLE_TEXT, this);
     layout->addMultiCellWidget(m_sampleFile, 0, 0, 1, 1, Qt::AlignLeft);
@@ -89,14 +91,19 @@ SamplerGUI::SamplerGUI(QString host, QString port,
     layout->addWidget(m_sustain, 2, 1, Qt::AlignLeft);
     connect(m_sustain, SIGNAL(toggled(bool)), this, SLOT(sustainChanged(bool)));
     
+    m_release = new QSlider(0, 2000, 20, 0, Qt::Horizontal, this);
+    layout->addWidget(m_release, 3, 1);
+    connect(m_release, SIGNAL(valueChanged(int)), this, SLOT(releaseChanged(int)));
+
     // cause some initial updates
     basePitchChanged (m_basePitch ->value());
     sustainChanged   (m_sustain   ->isChecked());
+    releaseChanged   (m_release   ->value());
 
     QPushButton *testButton = new QPushButton("Test", this);
     connect(testButton, SIGNAL(pressed()), this, SLOT(test_press()));
     connect(testButton, SIGNAL(released()), this, SLOT(test_release()));
-    layout->addWidget(testButton, 2, 2);
+    layout->addWidget(testButton, 3, 2);
 
     QTimer *myTimer = new QTimer(this);
     connect(myTimer, SIGNAL(timeout()), this, SLOT(oscRecv()));
@@ -130,6 +137,14 @@ SamplerGUI::setSustain(bool sustain)
 }
 
 void
+SamplerGUI::setRelease(int ms)
+{
+    m_suppressHostUpdate = true;
+    m_release->setValue(ms);
+    m_suppressHostUpdate = false;
+}
+
+void
 SamplerGUI::basePitchChanged(int value)
 {
     if (!m_suppressHostUpdate) {
@@ -142,6 +157,16 @@ SamplerGUI::sustainChanged(bool on)
 {
     if (!m_suppressHostUpdate) {
 	lo_send(m_host, m_controlPath, "if", Sampler_PORT_SUSTAIN, on ? 1.0 : 0.0);
+    }
+}
+
+void
+SamplerGUI::releaseChanged(int release)
+{
+    if (!m_suppressHostUpdate) {
+	float v = (float)release / 1000.0;
+	if (v < 0.001f) v = 0.001f;
+	lo_send(m_host, m_controlPath, "if", Sampler_PORT_RELEASE, v);
     }
 }
 
@@ -304,7 +329,11 @@ control_handler(const char *path, const char *types, lo_arg **argv,
 	break;
 
     case Sampler_PORT_SUSTAIN:
-	gui->setSustain(value > 0.001 ? true : false);
+	gui->setSustain(value > 0.001f ? true : false);
+	break;
+
+    case Sampler_PORT_RELEASE:
+	gui->setRelease(value <= 0.00101f ? 0 : (int)(value * 1000.0 + 0.5));
 	break;
 
     default:

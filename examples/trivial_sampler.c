@@ -30,7 +30,8 @@ static DSSI_Descriptor *samplerDDescriptor = NULL;
 #define Sampler_OUTPUT 0
 #define Sampler_BASE_PITCH 1
 #define Sampler_SUSTAIN 2
-#define Sampler_COUNT 3
+#define Sampler_RELEASE 3
+#define Sampler_COUNT 4
 
 #define MIDI_NOTES 128
 #define MAX_SAMPLE_COUNT 1048576
@@ -39,10 +40,12 @@ typedef struct {
     LADSPA_Data *output;
     LADSPA_Data *basePitch;
     LADSPA_Data *sustain;
+    LADSPA_Data *release;
     float       *sampleData;
     size_t       sampleCount;
     int          sampleRate;
-    long         onsets[MIDI_NOTES];
+    long         ons[MIDI_NOTES];
+    long         offs[MIDI_NOTES];
     char         velocities[MIDI_NOTES];
     long         sampleNo;
     pthread_mutex_t mutex;
@@ -92,6 +95,9 @@ static void connectPortSampler(LADSPA_Handle instance, unsigned long port,
     case Sampler_SUSTAIN:
 	plugin->sustain = data;
 	break;
+    case Sampler_RELEASE:
+	plugin->release = data;
+	break;
     }
 }
 
@@ -118,7 +124,9 @@ static void activateSampler(LADSPA_Handle instance)
     plugin_data->sampleNo = 0;
 
     for (i = 0; i < MIDI_NOTES; i++) {
-	plugin_data->onsets[i] = -1;
+	plugin_data->ons[i] = -1;
+	plugin_data->offs[i] = -1;
+	plugin_data->velocities[i] = 0;
     }
 }
 
@@ -140,22 +148,42 @@ static void addSample(Sampler *plugin_data, int n,
 	ratio = powf(1.059463094, n - *plugin_data->basePitch);
     }
 
-    if (pos + plugin_data->sampleNo < plugin_data->onsets[n]) return;
+    if (pos + plugin_data->sampleNo < plugin_data->ons[n]) return;
 
     gain = (float)plugin_data->velocities[n] / 127.0f;
 
-    for (i = 0, s = pos + plugin_data->sampleNo - plugin_data->onsets[n];
+    for (i = 0, s = pos + plugin_data->sampleNo - plugin_data->ons[n];
 	 i < count;
 	 ++i, ++s) {
 
 	unsigned long rs = (unsigned long)(s * ratio);
 
 	if (rs >= plugin_data->sampleCount) {
-	    plugin_data->onsets[n] = -1;
+	    plugin_data->ons[n] = -1;
 	    break;
 	}
+	
+	float sample = plugin_data->sampleData[rs];
 
-	output[pos + i] += gain * plugin_data->sampleData[rs];
+	if (plugin_data->offs[n] >= 0 &&
+	    pos + i + plugin_data->sampleNo > plugin_data->offs[n]) {
+
+	    unsigned long dist =
+		pos + i + plugin_data->sampleNo - plugin_data->offs[n];
+	    unsigned long releaseFrames = 200;
+	    if (plugin_data->release) {
+		releaseFrames = *plugin_data->release * plugin_data->sampleRate;
+	    }
+
+	    if (dist > releaseFrames) {
+		plugin_data->ons[n] = -1;
+		break;
+	    } else {
+		sample = sample * (float)(releaseFrames - dist) / (float)releaseFrames;
+	    }
+	}
+
+	output[pos + i] += gain * sample;
     }
 }
 
@@ -190,16 +218,21 @@ static void runSampler(LADSPA_Handle instance, unsigned long sample_count,
 	    if (events[event_pos].type == SND_SEQ_EVENT_NOTEON) {
 		snd_seq_ev_note_t n = events[event_pos].data.note;
 		if (n.velocity > 0) {
-		    plugin_data->onsets[n.note] =
+		    plugin_data->ons[n.note] =
 			plugin_data->sampleNo + events[event_pos].time.tick;
+		    plugin_data->offs[n.note] = -1;
 		    plugin_data->velocities[n.note] = n.velocity;
 		} else {
-		    plugin_data->onsets[n.note] = -1;
+		    if (!plugin_data->sustain || (*plugin_data->sustain < 0.001)) {
+			plugin_data->offs[n.note] = 
+			    plugin_data->sampleNo + events[event_pos].time.tick;
+		    }
 		}
 	    } else if (events[event_pos].type == SND_SEQ_EVENT_NOTEOFF &&
 		       (!plugin_data->sustain || (*plugin_data->sustain < 0.001))) {
 		snd_seq_ev_note_t n = events[event_pos].data.note;
-		plugin_data->onsets[n.note] = -1;
+		plugin_data->offs[n.note] = 
+		    plugin_data->sampleNo + events[event_pos].time.tick;
 	    }
 
 	    ++event_pos;
@@ -212,7 +245,7 @@ static void runSampler(LADSPA_Handle instance, unsigned long sample_count,
 	}
 
 	for (i = 0; i < MIDI_NOTES; ++i) {
-	    if (plugin_data->onsets[i] >= 0) {
+	    if (plugin_data->ons[i] >= 0) {
 		addSample(plugin_data, i, output, pos, count);
 	    }
 	}
@@ -228,6 +261,7 @@ int getControllerSampler(LADSPA_Handle instance, unsigned long port)
 {
     if (port == Sampler_BASE_PITCH) return DSSI_CC(12);
     else if (port == Sampler_SUSTAIN) return DSSI_CC(64);
+    else if (port == Sampler_RELEASE) return DSSI_CC(72);
     return DSSI_NONE;
 }
 
@@ -313,7 +347,7 @@ char *samplerLoad(Sampler *plugin_data, const char *path)
     plugin_data->sampleCount = samples;
 
     for (i = 0; i < MIDI_NOTES; ++i) {
-	plugin_data->onsets[i] = -1;
+	plugin_data->ons[i] = -1;
 	plugin_data->velocities[i] = 0;
     }
 
@@ -393,10 +427,19 @@ void _init()
 	port_descriptors[Sampler_SUSTAIN] = LADSPA_PORT_INPUT | LADSPA_PORT_CONTROL;
 	port_names[Sampler_SUSTAIN] = "Sustain on/off";
 	port_range_hints[Sampler_SUSTAIN].HintDescriptor =
-			LADSPA_HINT_DEFAULT_MAXIMUM | LADSPA_HINT_INTEGER |
+			LADSPA_HINT_DEFAULT_MINIMUM | LADSPA_HINT_INTEGER |
 			LADSPA_HINT_BOUNDED_BELOW | LADSPA_HINT_BOUNDED_ABOVE;
 	port_range_hints[Sampler_SUSTAIN].LowerBound = 0.0f;
 	port_range_hints[Sampler_SUSTAIN].UpperBound = 1.0f;
+
+	/* Parameters for release */
+	port_descriptors[Sampler_RELEASE] = LADSPA_PORT_INPUT | LADSPA_PORT_CONTROL;
+	port_names[Sampler_RELEASE] = "Release time in seconds";
+	port_range_hints[Sampler_RELEASE].HintDescriptor =
+			LADSPA_HINT_DEFAULT_MINIMUM | LADSPA_HINT_LOGARITHMIC |
+			LADSPA_HINT_BOUNDED_BELOW | LADSPA_HINT_BOUNDED_ABOVE;
+	port_range_hints[Sampler_RELEASE].LowerBound = 0.001f;
+	port_range_hints[Sampler_RELEASE].UpperBound = 2.0f;
 
 	samplerLDescriptor->activate = activateSampler;
 	samplerLDescriptor->cleanup = cleanupSampler;

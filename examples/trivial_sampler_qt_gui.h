@@ -17,6 +17,7 @@
 #include <qcheckbox.h>
 #include <qspinbox.h>
 #include <qlabel.h>
+#include <qslider.h>
 #include <qlayout.h>
 
 extern "C" {
@@ -42,12 +43,14 @@ public slots:
     void setSampleFile(QString file);
     void setBasePitch(int pitch);
     void setSustain(bool sustain);
+    void setRelease(int ms);
     void aboutToQuit();
 
 protected slots:
     void fileSelect();
     void basePitchChanged(int);
     void sustainChanged(bool);
+    void releaseChanged(int);
     void test_press();
     void test_release();
     void oscRecv();
@@ -56,6 +59,7 @@ protected:
     QLabel *m_sampleFile;
     QSpinBox *m_basePitch;
     QCheckBox *m_sustain;
+    QSlider *m_release;
 
     lo_address m_host;
     QString m_controlPath;
