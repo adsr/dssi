@@ -335,23 +335,16 @@ startGUI(const char *directory, const char *dllName, const char *label,
 
 	    fprintf(stderr, "trying to execute GUI at \"%s\"\n",
 		    filename);
-	 
-	    if ((child = fork()) < 0) {
 
-		perror("fork failed");
-
-	    } else if (child == 0) { // child process
-
-		if (fork()) {
-		    exit(0);
-		} else {
-		    if (execlp(filename, filename, oscUrl, dllName, label, 0)) {
-			perror("exec failed");
-			exit(1);
-		    }
+	    if (fork() == 0) {
+		if (fork() == 0) {
+		    execlp(filename, filename, oscUrl, dllName, label, 0);
+		    perror("exec failed");
+		    exit(1);
 		}
+		exit(0);
 	    }
-	    wait(child);
+	    wait(0);
 
 	    free(filename);
 	    free(subpath);

@@ -74,8 +74,8 @@ The existing Linux plugin standard can't easily be used for MIDI soft
 synths, because there is no way to pass MIDI or MIDI-like data to a
 plugin.  (A plugin could open its own ALSA sequencer input, but that
 is complex and carries the same timing limitation as discussed above.)
-There is also no toolkit-agnostic standard way to provide a GUI with a
-LADSPA plugin.
+There is also no toolkit-agnostic standard way to provide a user
+interface with a LADSPA plugin.
 
 * MIDI-over-JACK
 
@@ -107,9 +107,7 @@ libsynti.  It is probably the closest alternative to the present
 proposal, it addresses many of the same problems, it is working now,
 and it is an attractively small API.  Unfortunately it is unlikely to
 be popular as a standard for Linux audio plugins, simply because it is
-in C++ and requires Qt for plugin GUIs.  Most of the current candidate
-hosts for soft synths are already in C++, but it is not a popular
-choice for writing plugins.
+in C++ and requires Qt for plugin GUIs.
 
 * VSTi
 
@@ -141,7 +139,7 @@ The DSSI Proposal In Brief
 The above two parts of the proposal are documented thoroughly in the
 dssi.h header file.
 
-* Make the plugin GUI a separate standalone program, that communicates
+* Make the plugin UI a separate standalone program, that communicates
   with the host (_not_ directly with the plugin) via Open Sound Control
   messages.  (Thus ducking out of the GUI toolkit compatibility
   question altogether, ensuring that the plugin is always correctly
@@ -151,49 +149,51 @@ dssi.h header file.
 This part of the proposal is documented below.
 
 
-DSSI Synth GUIs
----------------
+DSSI Synth UIs
+--------------
 
-A synth GUI is an executable program, not a part of the plugin or a
-separate shared object.  A host may elect to start or stop the GUI for
-a plugin at any time, starting and terminating the executable at will.
+A synth user interface is an executable program, not a part of the
+plugin or a separate shared object.  A host may elect to start or stop
+the UI for a plugin at any time, starting and terminating the
+executable at will.
 
 1. In General
 
-The GUI and host communicate with one another using OSC, the OpenSound
+The UI and host communicate with one another using OSC, the OpenSound
 Control protocol.  See
 
   http://www.cnmat.berkeley.edu/OpenSoundControl/
 
-OSC is a simple message-based transport-independent protocol intended
-for communications among sound devices.  No particular OSC
-implementation is mandated for DSSI, although the example code uses a
-UDP-based implementation by Steve Harris called liblo ("Lite OSC")
-which can be obtained from
+OSC is a simple message-based protocol intended for communications
+among sound devices.  DSSI does not mandate any particular
+implementation of OSC, but it does require that it be based on a UDP
+transport (OSC itself is transport-independent).  The example code
+uses an implementation by Steve Harris called liblo ("Lite OSC") which
+can be obtained from
 
   http://www.plugin.org.uk/liblo/
 
 Note that liblo is distributed under a different licence from DSSI and
 so might not be a legal option for certain DSSI implementations.
 
-DSSI uses OSC in both directions between the host and GUI.  When a
-user changes a port value in the GUI, it sends an OSC request to the
+DSSI uses OSC in both directions between the host and UI.  When a
+user changes a port value in the UI, it sends an OSC request to the
 host, which informs the plugin of the change; when an automated port
-change occurs in the host, it sends an update to the GUI.  (The host
-does not send updates to the GUI for port changes that the GUI itself
-initiated; likewise the GUI must not send port changes back to the
+change occurs in the host, it sends an update to the UI.  (The host
+does not send updates to the UI for port changes that the UI itself
+initiated; likewise the UI must not send port changes back to the
 host that the host itself initiated.)
 
-Communications between the host and GUI are deliberately as limited as
-possible.  There is, for example, no way for a GUI to query the
+Communications between the host and UI are deliberately as limited as
+possible.  There is, for example, no way for a UI to query the
 available port names, values, ranges etc for a plugin.  It's expected
-that the GUI will either share some code with the plugin so that it
+that the UI will either share some code with the plugin so that it
 knows these things already, or will itself also load the plugin DLL
 and query it directly.
 
 2. Discovery and Startup
 
-The mechanism by which a host locates and invokes the GUI for a plugin
+The mechanism by which a host locates and invokes the UI for a plugin
 is host-dependent.
 
 Our recommendation is this: for a plugin labelled PLUGIN found in a
@@ -211,7 +211,7 @@ consisting of:
   * the name of the .so in which the plugin was found (here PLUGINS.so)
   * the label of the plugin (here PLUGIN).
 
-The GUI then requests an update, passing its own OSC URL and base path
+The UI then requests an update, passing its own OSC URL and base path
 to the host; the host responds by sending the current values of all
 the ports, and startup is complete.
 
@@ -220,7 +220,7 @@ the ports, and startup is complete.
 An OSC method call consists of a path -- identifying the method being
 called -- and a sequence of typed arguments. 
 
-The DSSI host and GUI are each expected to think of an arbitrary path
+The DSSI host and UI are each expected to think of an arbitrary path
 to associate with each plugin instance, known as the "base path".
 This will presumably have some internal and/or diagnostic meaning:
 e.g. a host might use "/dssi/PLUGINS/PLUGIN.1" for the path to the
@@ -229,7 +229,7 @@ method calls are always made to a subpath of the base path, as
 detailed below.
 
 Base paths are exchanged on startup: the host gives its path to the
-GUI on the command line, the GUI returns its own as the argument to an
+UI on the command line, the UI returns its own as the argument to an
 update call.
 
 These are the methods the host may support:
@@ -243,10 +243,10 @@ These are the methods the host may support:
   bank and program number.  (required method)
 
   <base path>/update
-  Request an update on the GUI.  Takes one string argument, the GUI's
+  Request an update on the UI.  Takes one string argument, the UI's
   own OSC URL with base path.  The host should respond by sending the
-  current state of the plugin to the GUI in a series of control and
-  program OSC calls.  (required method, and the GUI is required to
+  current state of the plugin to the UI in a series of control and
+  program OSC calls.  (required method, and the UI is required to
   use it)
   
   <base path>/configure
@@ -257,20 +257,20 @@ These are the methods the host may support:
   <base path>/midi
   Send an arbitrary MIDI event to the plugin.  Takes a four-byte MIDI
   string.  This is expected to be used for note data generated from a
-  test panel on the GUI, for example.  It should not be used for
+  test panel on the UI, for example.  It should not be used for
   program or controller changes, sysex data, etc.  A host should
   feel free to drop any values it doesn't wish to pass on.  No
   guarantees are provided about timing accuracy, etc, of the MIDI
   communication.  (optional method)
 
-And these are the methods the GUI may support:
+And these are the methods the UI may support:
 
   <base path>/control
-  Update the GUI from an automated control change.  Takes an int
+  Update the UI from an automated control change.  Takes an int
   argument for port number and float for value.  (required method)
 
   <base path>/program
-  Update the GUI from an automated program change.  Takes an int
+  Update the UI from an automated program change.  Takes an int
   argument for bank number and int for value.  (required method if
   the plugin supports program changes)
 
