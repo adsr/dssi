@@ -61,11 +61,15 @@ static int midiEventReadIndex = 0, midiEventWriteIndex = 0;
 #define MIDI_CONTROLLER_COUNT 128
 static long controllerMap[MIDI_CONTROLLER_COUNT]; /* contains indices into pluginControlIns */
 
+static pthread_mutex_t midiEventBufferMutex = PTHREAD_MUTEX_INITIALIZER;
+
 LADSPA_Data get_port_default(const LADSPA_Descriptor *plugin, int port);
 
 void osc_error(int num, const char *m, const char *path);
 
 int osc_handler(const char *path, const char *types, lo_arg **argv, int argc,
+                 void *data, void *user_data) ;
+int osc_midi_handler(const char *path, const char *types, lo_arg **argv, int argc,
                  void *data, void *user_data) ;
 int update_handler(const char *path, const char *types, lo_arg **argv, int
 		    argc, void *data, void *user_data) ;
@@ -84,6 +88,8 @@ void
 midi_callback()
 {
     snd_seq_event_t *ev = 0;
+
+    pthread_mutex_lock(&midiEventBufferMutex);
 
     do {
 	if (snd_seq_event_input(alsaClient, &ev) > 0) {
@@ -111,6 +117,8 @@ midi_callback()
 	}
 	
     } while (snd_seq_event_input_pending(alsaClient, 0) > 0);
+
+    pthread_mutex_unlock(&midiEventBufferMutex);
 }
 
 void
@@ -505,6 +513,8 @@ main(int argc, char **argv)
 
     lo_server_thread_add_method(serverThread, osc_path, "if", osc_handler,
 				NULL);
+    lo_server_thread_add_method(serverThread, osc_path, "m", osc_midi_handler,
+				NULL);
     lo_server_thread_add_method(serverThread, update_path, "s", update_handler,
 				NULL);
     lo_server_thread_add_method(serverThread, NULL, NULL, debug_handler,
@@ -718,6 +728,53 @@ void osc_error(int num, const char *msg, const char *path)
 {
     printf("liblo server error %d in path %s: %s\n", num, path, msg);
 }
+
+int osc_midi_handler(const char *path, const char *types, lo_arg **argv, int argc,
+		     void *data, void *user_data) 
+{
+    /* Normally a host would have one of these per plugin instance */
+    static snd_midi_event_t *alsaCoder = 0;
+    static snd_seq_event_t alsaEncodeBuffer[10];
+    long count, i;
+
+    if (!alsaCoder) {
+	snd_midi_event_new(10, &alsaCoder);
+	if (!alsaCoder) {
+	    fprintf(stderr, "Failed to initialise ALSA MIDI coder!\n");
+	    return 0;
+	}
+    }
+
+    count = snd_midi_event_encode
+	(alsaCoder, argv[0]->m, 4, alsaEncodeBuffer);
+    
+    pthread_mutex_lock(&midiEventBufferMutex);
+
+    for (i = 0; i < count; ++i) {
+	
+	snd_seq_event_t *ev;
+
+	if (midiEventReadIndex == midiEventWriteIndex + 1) {
+	    fprintf(stderr, "Warning: MIDI event buffer overflow!\n");
+	    continue;
+	}
+
+	midiEventBuffer[midiEventWriteIndex] = alsaEncodeBuffer[i];
+	
+	ev = &midiEventBuffer[midiEventWriteIndex];
+	
+	if (ev->type == SND_SEQ_EVENT_NOTEON && ev->data.note.velocity == 0) {
+	    ev->type =  SND_SEQ_EVENT_NOTEOFF;
+	}
+	
+	midiEventWriteIndex = (midiEventWriteIndex + 1) % EVENT_BUFFER_SIZE;
+    }
+
+    pthread_mutex_unlock(&midiEventBufferMutex);
+
+    return 0;
+}
+
 
 int osc_handler(const char *path, const char *types, lo_arg **argv, int argc,
                  void *data, void *user_data) 
