@@ -569,7 +569,7 @@ entirely defined by its host-visible configuration.)
 
 "Unique" IDs
 ~~~~~~~~~~~~
-LADSPA defines a "Unique ID" value within a plugin identifier, which
+LADSPA defines a "Unique ID" value within a plugin descriptor, which
 is intended to provide a globally unique identifier for the plugin
 type.  Plugin authors are expected to liaise with an unnamed central
 body to ensure that their plugin IDs are in fact unique.
