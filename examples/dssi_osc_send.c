@@ -19,24 +19,30 @@ usage(char *program_name)
     } else {
         base_name = program_name;
     }
-    fprintf(stderr, "usage: %s [option] <OSC URL> <values>\n\n", program_name);
+    fprintf(stderr, "usage: %s <option> <OSC URL> <values>\n\n", program_name);
+    fprintf(stderr, "example OSC URLs:\n\n"
+                    "  osc.udp://localhost:19383/dssi/test.1\n"
+                    "  osc.udp://my.host.org:10886/dssi/xsynth-dssi/Xsynth/chan00\n\n");
     fprintf(stderr, "example 'control' message (set control port 1 to 0.1):\n\n"
-                    "  %s    osc.udp://localhost:19383/dssi/test.1/control 1 0.1\n\n", base_name);
-    fprintf(stderr, "or:\n\n"
-                    "  %s -c osc.udp://localhost:19383/dssi/test.1         1 0.1\n\n", base_name);
+                    "  %s -c <OSC URL> 1 0.1\n\n", base_name);
     fprintf(stderr, "example 'program' message (select bank 0 program number 7):\n\n"
-                    "  %s -p osc.udp://localhost:19383/dssi/test.1 0 7\n\n", base_name);
+                    "  %s -p <OSC URL> 0 7\n\n", base_name);
     fprintf(stderr, "example 'midi' message (send a note on, middle C, velocity 64):\n\n"
-                    "  %s -m osc.udp://localhost:19383/dssi/test.1 144 60 64\n\n", base_name);
+                    "  %s -m <OSC URL> 0 144 60 64\n\n", base_name);
     fprintf(stderr, "example 'configure' message (send key 'load' and value '/tmp/patches.pat'):\n\n"
-                    "  %s -C osc.udp://localhost:19383/dssi/test.1 load /tmp/patches.pat\n\n", base_name);
+                    "  %s -C <OSC URL> load /tmp/patches.pat\n\n", base_name);
+    fprintf(stderr, "messages requiring no additional arguments:\n\n"
+                    "  %s -s <OSC URL>      (send 'show' message)\n", base_name);
+    fprintf(stderr, "  %s -h <OSC URL>      (send 'hide' message)\n", base_name);
+    fprintf(stderr, "  %s -q <OSC URL>      (send 'quit' message)\n", base_name);
+    fprintf(stderr, "  %s -e <OSC URL>      (send 'exiting' message)\n", base_name);
     exit(1);
 }
 
 int main(int argc, char *argv[])
 {
     lo_address a;
-    char *url, *host, *port, *path;
+    char *url, *host, *port, *path, *method;
     char mode = '-';
     char full_path[256];
 
@@ -44,7 +50,7 @@ int main(int argc, char *argv[])
     float value;
     unsigned char midi[4];
 
-    if (argc < 4) {
+    if (argc < 3) {
         usage(argv[0]);
         /* does not return */
     }
@@ -53,7 +59,11 @@ int main(int argc, char *argv[])
         if (argv[1][1] == 'c' ||
             argv[1][1] == 'p' ||
             argv[1][1] == 'm' ||
-            argv[1][1] == 'C') {
+            argv[1][1] == 'C' ||
+            argv[1][1] == 's' ||
+            argv[1][1] == 'h' ||
+            argv[1][1] == 'q' ||
+            argv[1][1] == 'e') {
             mode = argv[1][1];
             url = argv[2];
         } else {
@@ -98,13 +108,13 @@ int main(int argc, char *argv[])
         break;
 
       case 'm': /* send 'midi' message */
-        if (argc > 7) usage(argv[0]);
+        if (argc < 5 || argc > 7) usage(argv[0]);
         snprintf(full_path, 255, "%s/midi", path);
-        midi[0] = atoi(argv[3]);
-        midi[1] = argc > 4 ? atoi(argv[4]) : 0;
-        midi[2] = argc > 5 ? atoi(argv[5]) : 0;
-        midi[3] = argc > 6 ? atoi(argv[6]) : 0;
-        printf("sending osc.udp://%s:%s%s %02x %02x %02x %02x\n", host, port, full_path,
+        midi[0] = atoi(argv[3]);                 /* "port id", according to OSC spec */
+        midi[1] = atoi(argv[4]);                 /* status byte */
+        midi[2] = argc > 5 ? atoi(argv[5]) : 0;  /* data byte 1 */
+        midi[3] = argc > 6 ? atoi(argv[6]) : 0;  /* data byte 2 */
+        printf("sending osc.udp://%s:%s%s [%02x %02x %02x %02x]\n", host, port, full_path,
                midi[0], midi[1], midi[2], midi[3]);
         lo_send(a, full_path, "m", midi);
         break;
@@ -115,6 +125,23 @@ int main(int argc, char *argv[])
         printf("sending osc.udp://%s:%s%s \"%s\" \"%s\"\n", host, port, full_path,
                argv[3], argv[4]);
         lo_send(a, full_path, "ss", argv[3], argv[4]);
+        break;
+
+      case 's': /* send 'show' message */
+      case 'h': /* send 'hide' message */
+      case 'q': /* send 'quit' message */
+      case 'e': /* send 'exiting' message */
+        if (argc != 3) usage(argv[0]);
+        switch (mode) {
+          default:
+          case 's':  method = "show";     break;
+          case 'h':  method = "hide";     break;
+          case 'q':  method = "quit";     break;
+          case 'e':  method = "exiting";  break;
+        }
+        snprintf(full_path, 255, "%s/%s", path, method);
+        printf("sending osc.udp://%s:%s%s\n", host, port, full_path);
+        lo_send(a, full_path, "");
         break;
     }
 

@@ -383,12 +383,13 @@ main(int argc, char **argv)
 
     QApplication application(argc, argv);
 
-    if (application.argc() != 4) {
+    if (application.argc() != 5) {
 	cerr << "usage: "
 	     << application.argv()[0] 
 	     << " <osc url>"
 	     << " <plugin dllname>"
 	     << " <plugin label>"
+	     << " <user-friendly id>"
 	     << endl;
 	return 2;
     }
@@ -417,7 +418,7 @@ main(int argc, char **argv)
 
     lo_server_thread thread = lo_server_thread_new(NULL, osc_error);
     lo_server_thread_add_method(thread, myControlPath, "if", control_handler, &gui);
-    lo_server_thread_add_method(thread, myProgramPath, "iii", program_handler, &gui);
+    lo_server_thread_add_method(thread, myProgramPath, "ii", program_handler, &gui);
     lo_server_thread_add_method(thread, myConfigurePath, "ss", configure_handler, &gui);
     lo_server_thread_add_method(thread, myShowPath, "", show_handler, &gui);
     lo_server_thread_add_method(thread, myHidePath, "", hide_handler, &gui);

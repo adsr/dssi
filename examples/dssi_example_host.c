@@ -408,7 +408,7 @@ instance_sort_cmp(const void *a, const void *b)
 
 void
 startGUI(const char *directory, const char *dllName, const char *label,
-	 const char *oscUrl)
+	 const char *oscUrl, const char *instanceTag)
 {
     struct dirent *entry;
     char *dllBase = strdup(dllName);
@@ -453,7 +453,7 @@ startGUI(const char *directory, const char *dllName, const char *label,
 		    filename);
 
 	    if (fork() == 0) {
-		execlp(filename, filename, oscUrl, dllName, label, 0);
+		execlp(filename, filename, oscUrl, dllName, label, instanceTag, 0);
 		perror("exec failed");
 		exit(1);
 	    }
@@ -986,10 +986,12 @@ main(int argc, char **argv)
      * continue even if we can't */
     /* -FIX- Ack! So many windows all at once! */
     for (i = 0; i < instance_count; i++) {
+        char tag[12];
         plugin = instances[i].plugin;
         snprintf(osc_path_tmp, 1024, "%s/%s", url, instances[i].friendly_name);
+        snprintf(tag, 12, "channel %d", instances[i].channel);
         startGUI(plugin->dll->directory, plugin->dll->name,
-                 plugin->descriptor->LADSPA_Plugin->Label, osc_path_tmp);
+                 plugin->descriptor->LADSPA_Plugin->Label, osc_path_tmp, tag);
     }
 
     MB_MESSAGE("Ready\n");
@@ -1101,20 +1103,6 @@ void osc_error(int num, const char *msg, const char *path)
     fprintf(stderr, "dssi_example_host: liblo server error %d in path %s: %s\n", num, path, msg);
 }
 
-// smbolton: Hmm, from the OpenSound Control Specification, v1.0:
-// 
-//     An application that does use any additional [non-standard]
-//     argument types must encode them with the OSC Type Tags in this
-//     table:
-// 
-//     OSC Type Tag   Type of corresponding argument
-// 
-//     m              4 byte MIDI message. Bytes from MSB to LSB are:
-//                    port id, status byte, data1, data2
-// 
-// which would mean we should start encoding from &argv[0]->m[1], and
-// not allow running status.
-
 int
 osc_midi_handler(d3h_instance_t *instance, lo_arg **argv)
 {
@@ -1136,7 +1124,7 @@ osc_midi_handler(d3h_instance_t *instance, lo_arg **argv)
     snd_midi_event_reset_encode(alsaCoder);
 
     count = snd_midi_event_encode
-	(alsaCoder, (argv[0]->m) + 1, 3, alsaEncodeBuffer);
+	(alsaCoder, (argv[0]->m) + 1, 3, alsaEncodeBuffer); /* ignore OSC "port id" in argv[0]->m[0] */
 
     if (!count || !snd_seq_ev_is_channel_type(ev)) {
         return 0;
