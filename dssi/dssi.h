@@ -27,9 +27,9 @@
 #include <ladspa.h>
 #include <alsa/seq_event.h>
 
-#define DSSI_VERSION "0.3"
+#define DSSI_VERSION "0.4"
 #define DSSI_VERSION_MAJOR 0
-#define DSSI_VERSION_MINOR 3
+#define DSSI_VERSION_MINOR 4
 
 #ifdef __cplusplus
 extern "C" {
@@ -73,7 +73,7 @@ typedef struct _DSSI_Program_Descriptor {
     /** Name of the program.  This memory is allocated by the plugin
 	using malloc() and must be freed by the host when no longer
 	needed. */
-    char * Name;
+    const char * Name;
 
 } DSSI_Program_Descriptor;
 
@@ -152,23 +152,19 @@ typedef struct _DSSI_Descriptor {
      *
      * The Index argument is an index into the plugin's list of
      * programs, not a program number as represented by the Program
-     * field of the DSSI_Program_Descriptor.
+     * field of the DSSI_Program_Descriptor.  (This distinction is
+     * needed to support synths that use non-contiguous program or
+     * bank numbers.)
      *
-     * This function must return 1 if given an Index argument in range
-     * or 0 if given an argument out of range, so that the host can
-     * use it to query the number of programs as well as their
-     * properties.  The program details are returned through the given
-     * Descriptor pointer if it is not NULL; this function may legally
-     * be called with a NULL Descriptor pointer for the purposes of
-     * determining only whether a given program index is legitimate.
-     *
-     * (The distinction between the program number and the index
-     * argument to this function is needed to support synths that use
-     * non-contiguous program or bank numbers.)
+     * This function returns a DSSI_Program_Descriptor pointer that is
+     * guaranteed to be valid only until the next call to get_program,
+     * deactivate, or configure, on the same plugin instance.  This
+     * function must return NULL if passed an Index argument out of
+     * range, so that the host can use it to query the number of
+     * programs as well as their properties.
      */
-    int (*get_program)(LADSPA_Handle Instance,
-		       unsigned long Index,
-		       DSSI_Program_Descriptor *Descriptor);
+    const DSSI_Program_Descriptor *(*get_program)(LADSPA_Handle Instance,
+						  unsigned long Index);
     
     /**
      * select_program()

@@ -492,17 +492,20 @@ query_programs(d3h_instance_t *instance)
 
 	/* Count the plugins first */
 	for (i = 0; instance->plugin->descriptor->
-                        get_program(instanceHandles[instance->number], i, 0); ++i);
+                        get_program(instanceHandles[instance->number], i); ++i);
 
 	if (i > 0) {
 	    instance->pluginProgramCount = i;
 	    instance->pluginPrograms = (DSSI_Program_Descriptor *)
 		malloc(i * sizeof(DSSI_Program_Descriptor));
 	    while (i > 0) {
+		const DSSI_Program_Descriptor *descriptor;
 		--i;
-		instance->plugin->descriptor->
-		    get_program(instanceHandles[instance->number], i,
-				instance->pluginPrograms + i);
+		descriptor = instance->plugin->descriptor->
+		    get_program(instanceHandles[instance->number], i);
+		instance->pluginPrograms[i].Bank = descriptor->Bank;
+		instance->pluginPrograms[i].Program = descriptor->Program;
+		instance->pluginPrograms[i].Name = strdup(descriptor->Name);
                 printf("dssi_example_host: %s program %d is MIDI bank %lu program %lu, named '%s'\n",
                        instance->friendly_name, i,
                        instance->pluginPrograms[i].Bank,
