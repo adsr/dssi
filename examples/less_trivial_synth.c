@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <limits.h>
 #include <string.h>
+#include <stdint.h>
 
 #include <math.h>
 #include <stdio.h>
@@ -31,11 +32,26 @@
 
 #define POLYPHONY   24
 #define MIDI_NOTES  128
+#define STEP_SIZE   16
 
 #define GLOBAL_GAIN 0.25f
 
+#define TABLE_MODULUS 1024
+#define TABLE_SIZE    (TABLE_MODULUS + 1)
+#define TABLE_MASK    (TABLE_MODULUS - 1)
+
+#define FP_IN(x) (x.part.in & TABLE_MASK)
+#define FP_FR(x) ((float)x.part.fr * 0.0000152587890625f)
+#define FP_OMEGA(w) ((double)TABLE_MODULUS * 65536.0 * (w));
+
+#define LERP(f,a,b) ((a) + (f) * ((b) - (a)))
+
+long int lrintf (float x);
+
 static LADSPA_Descriptor *ltsLDescriptor = NULL;
 static DSSI_Descriptor *ltsDDescriptor = NULL;
+
+float table[TABLE_SIZE];
 
 typedef enum {
     inactive = 0,
@@ -45,13 +61,21 @@ typedef enum {
     release
 } state_t;
 
+typedef union {
+    uint32_t all;
+    struct {
+	uint16_t fr;
+	uint16_t in;
+    } part;
+} fixp;
+
 typedef struct {
     state_t state;
     int     note;
     float   amp;
     float   env;
     float   env_d;
-    double  phase;
+    fixp    phase;
     int     counter;
     int     next_event;
 } voice_data;
@@ -73,7 +97,7 @@ typedef struct {
     LADSPA_Data *release;
     voice_data data[POLYPHONY];
     int note2voice[MIDI_NOTES];
-    float omega[MIDI_NOTES];
+    fixp omega[MIDI_NOTES];
     float fs;
 } LTS;
 
@@ -81,7 +105,7 @@ static void runLTS(LADSPA_Handle instance, unsigned long sample_count,
 		  snd_seq_event_t * events, unsigned long EventCount);
 
 static void run_voice(LTS *p, synth_vals *vals, voice_data *d,
-		      LADSPA_Data *out);
+		      LADSPA_Data *out, unsigned int count);
 
 int pick_voice(const voice_data *data);
 
@@ -148,8 +172,8 @@ static LADSPA_Handle instantiateLTS(const LADSPA_Descriptor * descriptor,
     plugin_data->fs = s_rate;
 
     for (i=0; i<MIDI_NOTES; i++) {
-	    plugin_data->omega[i] = M_PI * 2.0 / (double)s_rate *
-				    pow(2.0, (i-69.0) / 12.0);
+	plugin_data->omega[i].all =
+		FP_OMEGA(pow(2.0, (i-69.0) / 12.0) / (double)s_rate);
     }
 
     return (LADSPA_Handle) plugin_data;
@@ -164,7 +188,7 @@ static void activateLTS(LADSPA_Handle instance)
 	plugin_data->data[i].state = inactive;
     }
     for (i=0; i<MIDI_NOTES; i++) {
-	plugin_data->note2voice[i] = -1;
+	plugin_data->note2voice[i] = 0;
     }
 }
 
@@ -181,7 +205,9 @@ static void runLTS(LADSPA_Handle instance, unsigned long sample_count,
     LADSPA_Data *const output = plugin_data->output;
     synth_vals vals;
     voice_data *data = plugin_data->data;
+    unsigned long i;
     unsigned long pos;
+    unsigned long count;
     unsigned long event_pos;
     unsigned long voice;
 
@@ -191,9 +217,9 @@ static void runLTS(LADSPA_Handle instance, unsigned long sample_count,
     vals.sustain = *(plugin_data->sustain) * 0.01f;
     vals.release = *(plugin_data->release) * plugin_data->fs;
 
-    for (pos = 0, event_pos = 0; pos < sample_count; pos++) {
+    for (pos = 0, event_pos = 0; pos < sample_count; pos += STEP_SIZE) {
 	while (event_pos < event_count
-	       && pos == events[event_pos].time.tick) {
+	       && pos >= events[event_pos].time.tick) {
 	    if (events[event_pos].type == SND_SEQ_EVENT_NOTEON) {
 		snd_seq_ev_note_t n = events[event_pos].data.note;
 
@@ -206,7 +232,7 @@ static void runLTS(LADSPA_Handle instance, unsigned long sample_count,
 		    data[voice].state = attack;
 		    data[voice].env = 0.0;
 		    data[voice].env_d = 1.0f / vals.attack;
-		    data[voice].phase = 0.0;
+		    data[voice].phase.all = 0;
 		    data[voice].counter = 0;
 		    data[voice].next_event = vals.attack;
 		} else {
@@ -221,37 +247,45 @@ static void runLTS(LADSPA_Handle instance, unsigned long sample_count,
 		snd_seq_ev_note_t n = events[event_pos].data.note;
 		const int voice = plugin_data->note2voice[n.note];
 
-		data[voice].state = release;
-		data[voice].env_d = -data[voice].env / vals.release;
-		data[voice].counter = 0;
-		data[voice].next_event = vals.release;
+		if (data[voice].state != inactive) {
+		    data[voice].state = release;
+		    data[voice].env_d = -data[voice].env / vals.release;
+		    data[voice].counter = 0;
+		    data[voice].next_event = vals.release;
+		}
 	    }
 	    event_pos++;
 	}
 
-	/* this is a crazy way to run a synths inner loop, I've
+	/* this is a slightly crazy way to run a synths inner loop, I've
 	   just done it this way so its really obvious whats going on */
-	output[pos] = 0.0f;
+	count = (sample_count - pos) > STEP_SIZE ? STEP_SIZE :
+		sample_count - pos;
+	for (i=0; i<count; i++) {
+	    output[pos + i] = 0.0f;
+	}
 	for (voice = 0; voice < POLYPHONY; voice++) {
-	    run_voice(plugin_data, &vals, &data[voice], &output[pos]);
+	    if (data[voice].state != inactive) {
+		run_voice(plugin_data, &vals, &data[voice], output + pos,
+			  count);
+	    }
 	}
     }
 }
 
-static void run_voice(LTS *p, synth_vals *vals, voice_data *d, LADSPA_Data *out)
+static void run_voice(LTS *p, synth_vals *vals, voice_data *d, LADSPA_Data *out, unsigned int count)
 {
-    if (d->state == inactive) {
-	return;
+    unsigned int i;
+
+    for (i=0; i<count; i++) {
+	d->phase.all += lrintf((float)p->omega[d->note].all * vals->tune);
+	d->env += d->env_d;
+	out[i] += LERP(FP_FR(d->phase), table[FP_IN(d->phase)],
+		     table[FP_IN(d->phase) + 1]) * d->amp * d->env;
     }
 
-    d->phase += p->omega[d->note] * vals->tune;
-    if (d->phase > M_PI * 2.0) {
-	d->phase -= M_PI * 2.0;
-    }
-    d->env += d->env_d;
-    *out += sin(d->phase) * d->amp * d->env;
-
-    if ((d->counter)++ >= d->next_event) {
+    d->counter += count;
+    if (d->counter >= d->next_event) {
 	switch (d->state) {
 	case inactive:
 	    break;
@@ -308,7 +342,7 @@ int pick_voice(const voice_data *data)
 {
     unsigned int i;
     int highest_note = 0;
-    int highest_note_voice = -1;
+    int highest_note_voice = 0;
 
     /* Look for an inactive voice */
     for (i=0; i<POLYPHONY; i++) {
@@ -332,11 +366,16 @@ int pick_voice(const voice_data *data)
 
 void _init()
 {
+    unsigned int i;
     char **port_names;
     LADSPA_PortDescriptor *port_descriptors;
     LADSPA_PortRangeHint *port_range_hints;
 
     mb_init("LTS: ");
+
+    for (i=0; i<TABLE_SIZE; i++) {
+	table[i] = sin(2.0 * M_PI * (double)i / (double)TABLE_MODULUS);
+    }
 
     ltsLDescriptor =
 	(LADSPA_Descriptor *) malloc(sizeof(LADSPA_Descriptor));
