@@ -11,7 +11,6 @@
 */
 
 #include "less_trivial_synth_qt_gui.h"
-#include "osc_url.h"
 
 #include <qapplication.h>
 #include <iostream>
@@ -315,7 +314,6 @@ main(int argc, char **argv)
     char *host = lo_url_get_hostname(url);
     char *port = lo_url_get_port(url);
     char *path = lo_url_get_path(url);
-printf("path = %s\n", path);
 
     SynthGUI gui(host, port, path);
     application.setMainWidget(&gui);

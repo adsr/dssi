@@ -11,8 +11,6 @@
 #include <string.h>
 #include <lo/lo.h>
 
-#include "osc_url.h"
-
 static volatile int done = 0;
 
 int update_handler(const char *path, const char *types, lo_arg **argv,
@@ -32,7 +30,7 @@ void osc_error(int num, const char *msg, const char *path)
 int main(int argc, char *argv[])
 {
     lo_server_thread st;
-    lo_target t;
+    lo_target a;
     char *host, *port, *path;
     char full_path[256];
     char *my_url = "osc://localhost:4445/";
@@ -42,10 +40,10 @@ int main(int argc, char *argv[])
 	return 1;
     }
 
-    host = osc_url_get_hostname(argv[1]);
-    port = osc_url_get_port(argv[1]);
-    path = osc_url_get_path(argv[1]);
-    t = lo_target_new(host, port);
+    host = lo_url_get_hostname(argv[1]);
+    port = lo_url_get_port(argv[1]);
+    path = lo_url_get_path(argv[1]);
+    a = lo_target_new(host, port);
 
     snprintf(full_path, 255, "%s/update", path);
 
@@ -54,8 +52,8 @@ int main(int argc, char *argv[])
 				osc_error);
     lo_server_thread_start(st);
 
-    printf("sending osc://%s:%s%s \"%s\"\n", host, port, full_path, my_url);
-    lo_send(t, full_path, "s", my_url);
+    printf("sending osc.udp://%s:%s%s \"%s\"\n", host, port, full_path, my_url);
+    lo_send(a, full_path, "s", my_url);
     free(host);
     free(port);
     free(path);

@@ -26,7 +26,6 @@
 #include <lo/lo.h>
 
 #include "message_buffer.h"
-#include "osc_url.h"
 
 static snd_seq_t *alsaClient;
 
@@ -66,8 +65,6 @@ int update_handler(const char *path, const char *types, lo_arg **argv, int
 		    argc, void *data, void *user_data) ;
 int debug_handler(const char *path, const char *types, lo_arg **argv, int
 		    argc, void *data, void *user_data) ;
-char *osc_url_get_hostname(const char *url);
-char *osc_url_get_port(const char *url);
 
 void
 midi_callback()
@@ -632,8 +629,8 @@ int update_handler(const char *path, const char *types, lo_arg **argv, int argc,
     char *host, *port;
 
     printf("OSC: got update request from <%s>\n", url);
-    host = osc_url_get_hostname(url);
-    port = osc_url_get_port(url);
+    host = lo_url_get_hostname(url);
+    port = lo_url_get_port(url);
     uiTarget = lo_target_new(host, port);
     free(host);
     free(port);

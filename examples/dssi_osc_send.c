@@ -9,11 +9,9 @@
 #include <string.h>
 #include <lo/lo.h>
 
-#include "osc_url.h"
-
 int main(int argc, char *argv[])
 {
-    lo_target t;
+    lo_address a;
     char *host, *port, *path;
     int ladspa_port;
     float value;
@@ -23,17 +21,17 @@ int main(int argc, char *argv[])
 	return 1;
     }
 
-    host = osc_url_get_hostname(argv[1]);
-    port = osc_url_get_port(argv[1]);
-    path = osc_url_get_path(argv[1]);
+    host = lo_url_get_hostname(argv[1]);
+    port = lo_url_get_port(argv[1]);
+    path = lo_url_get_path(argv[1]);
     ladspa_port = atoi(argv[2]);
     value = atof(argv[3]);
-    t = lo_target_new(host, port);
-    printf("sending osc://%s:%s%s %d %f\n", host, port, path, ladspa_port,
+    a = lo_address_new(host, port);
+    printf("sending osc.udp://%s:%s%s %d %f\n", host, port, path, ladspa_port,
 	   value);
-    lo_send(t, path, "if", ladspa_port, value);
-    if (lo_target_errno(t)) {
-	printf("liblo error: %s\n", lo_target_errstr(t));
+    lo_send(a, path, "if", ladspa_port, value);
+    if (lo_address_errno(a)) {
+	printf("liblo error: %s\n", lo_address_errstr(a));
     }
     free(host);
     free(port);
