@@ -697,7 +697,7 @@ main(int argc, char **argv)
 	fprintf(stderr, "  <libname> DSSI plugin library .so to load (searched for in $DSSI_PATH)\n");
 	fprintf(stderr, "  <label>   Label of plugin to load from library\n");
 	fprintf(stderr, "  [...]     Optionally more instance counts, plugins and labels\n");
-	fprintf(stderr, "\nExample: %s -2 lib1.so -1 lib2.so/fuzzy\n", argv[0]);
+	fprintf(stderr, "\nExample: %s -2 lib1.so -1 lib2.so:fuzzy\n", argv[0]);
 	fprintf(stderr, "  run two instances of the first plugin found in lib1.so, assigned to MIDI\n  channels 0 and 1 and connected to the first available JACK outputs, and one\n  instance of the \"fuzzy\" plugin in lib2.so with MIDI channels 2 and 3 and\n  connected to the next available JACK outputs.\n");
 	fprintf(stderr,"\nAs a special case, if this program is started with a name other than\njack-dssi-host, and if that name (plus .so suffix) can be found in the DSSI path\nas a valid plugin library, and if no further command line arguments are given,\nthen the first plugin in that library will be loaded automatically.\n\n");
 	return 2;
