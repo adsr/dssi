@@ -3,15 +3,16 @@
 DSSI
 ====
 
+An API for soft synth plugins with custom user interfaces.
 Version 0.9.
 
 
 Summary
 -------
 
-DSSI (pronounced "dizzy") is a proposal for a plugin API for software
-instruments (soft synths) with user interfaces, permitting them to be
-hosted in-process by audio applications.  DSSI can be thought of as
+DSSI (pronounced "dizzy") is a plugin API for software instruments
+(soft synths) with user interfaces, permitting them to be hosted
+in-process by audio applications.  DSSI can be thought of as
 LADSPA-for-instruments, or something comparable to VSTi.
 
 The proposal consists of this RFC, which describes the background and
@@ -129,12 +130,12 @@ as this one.
  * M.E.S.S.
 
    The MusE sequencer has an API for hosting soft synths, known as
-   M.E.S.S.  It is probably the closest alternative to the present
-   proposal, it addresses many of the same problems, it is working
-   now, and it is an attractively small API.  Unfortunately it is
-   unlikely to be popular as a standard for Linux audio plugins,
-   because it is in C++, is designed specifically to match a single
-   host, and is undocumented and changeable.
+   M.E.S.S (MusE Experimental Soft Synth).  It is probably the closest
+   alternative to the present proposal, it addresses many of the same
+   problems, it is working now, and it is an attractively small API.
+   Unfortunately as a host-specific C++ framework whose API is
+   undocumented and explicitly unstable, it is unlikely to prove
+   popular as a standard for Linux plugins.
 
  * VSTi
 
@@ -152,22 +153,24 @@ The DSSI Proposal In Brief
 --------------------------
 
  * A DSSI plugin is a wrapper for a LADSPA plugin.  The LADSPA plugin
-   is used for all control and audio data.  (Thus taking advantage of
-   the existing widespread awareness of how LADSPA works, as well as
-   functioning mechanisms for handling controls, instantiation etc.)
+   is used for all control and audio data.  DSSI therefore takes
+   advantage of the existing widespread awareness of how LADSPA works,
+   as well as functioning mechanisms for handling controls,
+   instantiation etc.
 
  * DSSI provides mechanisms for querying and changing programs,
    mapping MIDI controllers to LADSPA control ports, and running a
    synth with a set of frame-timestamped MIDI events using the
-   existing ALSA sequencer event type struct.  (Thus ensuring timing
-   correctness and enabling the host to query the various additional
-   bits of non-MIDI non-audio information it needs.)
+   existing ALSA sequencer event type struct.  This ensuring timing
+   correctness and enables the host to query the various additional
+   bits of non-MIDI non-audio information it needs.
 
- * DSSI provides for synchronization and resource sharing between multiple
-   instantiations of a single plugin.  (Thus allowing for such things
+ * DSSI provides for synchronization and resource sharing between
+   multiple instantiations of a single plugin.  This permits such things
    as complex voice allocation/stealing algorithms and the sharing of
    large wavetables between what would otherwise be independent
-   single-channel plugin instances.)
+   single-channel plugin instances, without requiring the plugin to
+   support 16 fixed MIDI channels.
 
 The above three parts of the proposal are documented thoroughly in the
 dssi.h header file.
@@ -188,10 +191,6 @@ dssi.h header file.
 
    This part of the proposal is documented in the 'DSSI Synth UIs'
    section below.
-
-   N.B. An attractive side-effect of DSSI's basis in LADSPA is that
-   the DSSI UI mechanism can also be used to create custom UIs for
-   LADSPA plugins.
 
 
 DSSI Multi-thread / Multi-process Considerations
@@ -258,7 +257,7 @@ may call control class functions from a 'control' thread, and audio
 class functions from an 'audio' thread, nothing in these rules
 requires that.  As long as the restrictions on simultaneous
 execution of the functions are met, host applications may be
-structured in any way that makes sense.
+structured in any way that makes sense.  These rules follow.
 
 Rules for Hosts
 ~~~~~~~~~~~~~~~
@@ -267,11 +266,11 @@ group are:
 
  1. While one function of a particular class is being executed,
     the host may not call any other functions of that class.  Thus
-    (for example), an instance group of plugins can assume that
-    get_program() will not be called for any instance while a
+    (for example) an instance group of plugins can safely assume
+    that get_program() will not be called for any instance while a
     configure() call is still executing, and that select_program()
-    will not be called for any instance while any of the run*()
-    functions are executing,
+    will not be called for any instance while one of the run
+    functions is executing,
 
  2. While a function of the instantiation class is being run, the
     host may not call any functions of the other two classes, and
@@ -285,9 +284,8 @@ DSSI system.  When a host is using run_multiple_synths() with a
 particular plugin, then the instance group includes all active
 instances of that same plugin.  When a plugin does not support
 run_multiple_synths() (or when it supplies both run_synth() and
-run_multiple_synths() but the host chooses not to use
-run_multiple_synths()), then each instance of the plugin is its own
-instance group.
+run_multiple_synths() but the host chooses to use run_synth()), then
+each instance of the plugin is its own instance group.
 
 Because a single DSSI library (typically a dynamically-loaded *.so
 file) may contain several different plugins, it is important to

@@ -422,7 +422,7 @@ SamplerGUI::fileSelect()
 	if (info.frames > Sampler_FRAMES_MAX) {
 	    QMessageBox::warning
 		(this, "Couldn't use audio file",
-		 QString("Audio sample file '%1' is too large (%2 frames, maximum is %3)").arg(path).arg(info.frames).arg(Sampler_FRAMES_MAX),
+		 QString("Audio sample file '%1' is too large (%2 frames, maximum is %3)").arg(path).arg((int)info.frames).arg(Sampler_FRAMES_MAX),
 		 QMessageBox::Ok, 0);
 	    sf_close(file);
 	    return;

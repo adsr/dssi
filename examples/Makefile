@@ -37,7 +37,7 @@ install: all
 	test -x $(PREFIX)/bin/jack-dssi-host && ln -sf jack-dssi-host $(PREFIX)/bin/trivial_sampler
 
 
-CFLAGS = -Wall -g3 -I../dssi $(LIBLO_CFLAGS)
+CFLAGS = -Wall -O2 -I../dssi $(LIBLO_CFLAGS)
 CXXFLAGS = $(CFLAGS) -I$(QTINCDIR)
 LDLIBS = $(LIBLO_LIBS)
 

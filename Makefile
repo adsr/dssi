@@ -34,5 +34,5 @@ install: all
 	@$(MAKE) -C examples install
 	@test -d $(FLUID)/src && $(MAKE) -C fluidsynth-dssi install || echo "Not installing fluidsynth-dssi"
 
-doc/RFC.html:	doc/RFC.txt
+doc/%.html:	doc/%.txt
 	perl ./scripts/txt2html.pl $< | perl ./scripts/tableofcontents.pl > $@
