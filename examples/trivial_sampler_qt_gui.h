@@ -46,6 +46,7 @@ public slots:
     void setSustain(bool sustain);
     void setRelease(int ms);
     void setBalance(int balance);
+    void setProjectDirectory(QString dir);
     void aboutToQuit();
 
 protected slots:
@@ -80,6 +81,7 @@ protected:
     QString m_exitingPath;
 
     QString m_file;
+    QString m_projectDir;
     int m_previewWidth;
     int m_previewHeight;
 

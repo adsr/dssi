@@ -51,6 +51,7 @@ typedef struct {
     long         offs[Sampler_NOTES];
     char         velocities[Sampler_NOTES];
     long         sampleNo;
+    char        *projectDir;
     pthread_mutex_t mutex;
 } Sampler;
 
@@ -61,9 +62,9 @@ const LADSPA_Descriptor *ladspa_descriptor(unsigned long index)
 {
     switch (index) {
     case 0:
-	return samplerMonoLDescriptor;
-    case 1:
 	return samplerStereoLDescriptor;
+    case 1:
+	return samplerMonoLDescriptor;
     default:
 	return NULL;
     }
@@ -73,9 +74,9 @@ const DSSI_Descriptor *dssi_descriptor(unsigned long index)
 {
     switch (index) {
     case 0:
-	return samplerMonoDDescriptor;
-    case 1:
 	return samplerStereoDDescriptor;
+    case 1:
+	return samplerMonoDDescriptor;
     default:
 	return NULL;
     }
@@ -147,6 +148,7 @@ static LADSPA_Handle instantiateSampler(const LADSPA_Descriptor * descriptor,
     plugin_data->sampleData[1] = 0;
     plugin_data->sampleCount = 0;
     plugin_data->sampleRate = s_rate;
+    plugin_data->projectDir = 0;
 
     if (!strcmp(descriptor->Label, Sampler_Stereo_LABEL)) {
 	plugin_data->channels = 2;
@@ -472,6 +474,9 @@ char *samplerConfigure(LADSPA_Handle instance, const char *key, const char *valu
 
     if (!strcmp(key, "load")) {
 	return samplerLoad(plugin_data, value);
+    } else if (!strcmp(key, DSSI_PROJECT_DIRECTORY_KEY)) {
+	plugin_data->projectDir = strdup(value);
+	return 0;
     }
 
     return strdup("error: unrecognized configure key");

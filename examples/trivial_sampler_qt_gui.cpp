@@ -25,6 +25,8 @@
 #include <unistd.h>
 #include <sndfile.h>
 
+#include "dssi.h"
+
 #ifdef Q_WS_X11
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
@@ -278,6 +280,15 @@ SamplerGUI::generatePreview(QString path)
 }
 
 void
+SamplerGUI::setProjectDirectory(QString dir)
+{
+    QFileInfo info(dir);
+    if (info.exists() && info.isDir() && info.isReadable()) {
+	m_projectDir = dir;
+    }
+}
+
+void
 SamplerGUI::setSampleFile(QString file)
 {
     m_suppressHostUpdate = true;
@@ -380,7 +391,13 @@ void
 SamplerGUI::fileSelect()
 {
     QString orig = m_file;
-    if (!orig) orig = ".";
+    if (!orig) {
+	if (m_projectDir) {
+	    orig = m_projectDir;
+	} else {
+	    orig = ".";
+	}
+    }
 
     QString path = QFileDialog::getOpenFileName
 	(orig, "Audio files (*.wav *.aiff)", this, "file select",
@@ -489,6 +506,8 @@ configure_handler(const char *path, const char *types, lo_arg **argv,
 
     if (!strcmp(key, "load")) {
 	gui->setSampleFile(value);
+    } else if (!strcmp(key, DSSI_PROJECT_DIRECTORY_KEY)) {
+	gui->setProjectDirectory(value);
     }
 
     return 0;

@@ -34,6 +34,7 @@ install: all
 	mkdir -p $(PREFIX)/lib/dssi/trivial_sampler
 	cp trivial_sampler.so $(PREFIX)/lib/dssi/
 	cp trivial_sampler_qt_gui $(PREFIX)/lib/dssi/trivial_sampler/trivial_sampler_qt
+	test -x $(PREFIX)/bin/jack-dssi-host && ln -sf jack-dssi-host $(PREFIX)/bin/trivial_sampler
 
 
 CFLAGS = -Wall -g3 -I../dssi $(LIBLO_CFLAGS)

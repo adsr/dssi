@@ -81,6 +81,8 @@ static int *pluginPortUpdated;                             /* indexed by global 
 
 static char osc_path_tmp[1024];
 
+static char *projectDirectory;
+
 lo_server_thread serverThread;
 
 static sigset_t _signals;
@@ -697,8 +699,9 @@ main(int argc, char **argv)
     /* Parse args and report usage */
 
     if (argc < 2) {
-	fprintf(stderr, "\nUsage: %s [-v] [-<i>] <libname>[%c<label>] [...]\n", argv[0], LABEL_SEP);
+	fprintf(stderr, "\nUsage: %s [-v] [-p <projdir>] [-<i>] <libname>[%c<label>] [...]\n", argv[0], LABEL_SEP);
 	fprintf(stderr, "\n  -v        Verbose mode\n");
+	fprintf(stderr, "  <projdir> Project directory to pass to plugin and UI\n");
 	fprintf(stderr, "  <i>       Number of instances of each plugin to run (max %d total, default 1)\n", D3H_MAX_INSTANCES);
 	fprintf(stderr, "  <libname> DSSI plugin library .so to load (searched for in $DSSI_PATH)\n");
 	fprintf(stderr, "  <label>   Label of plugin to load from library\n");
@@ -711,11 +714,23 @@ main(int argc, char **argv)
 
     fprintf(stderr, "jack-dssi-host: Starting...\n");
 
+    projectDirectory = NULL;
+
     reps = 1;
     for (i = 1; i < argc; i++) {
 
 	if (!strcmp(argv[i], "-v")) {
 	    verbose = 1;
+	    continue;
+	}
+
+	if (!strcmp(argv[i], "-p")) {
+	    if (i < argc - 1) {
+		projectDirectory = argv[++i];
+	    } else {
+		fprintf(stderr, "jack-dssi-host: project directory expected after -p\n");
+		return 2;
+	    }
 	    continue;
 	}
 
@@ -896,6 +911,11 @@ main(int argc, char **argv)
         reps = 1;
     }
 
+    if (instance_count == 0) {
+	fprintf(stderr, "jack-dssi-host: No plugin specified\n");
+	return 2;
+    }
+
     /* sort array of instances to group them by plugin */
     if (instance_count > 1) {
         qsort(instances, instance_count, sizeof(d3h_instance_t), instance_sort_cmp);
@@ -1020,12 +1040,19 @@ main(int argc, char **argv)
         plugin = instances[i].plugin;
         instanceHandles[i] = plugin->descriptor->LADSPA_Plugin->instantiate
             (plugin->descriptor->LADSPA_Plugin, jack_get_sample_rate(jackClient));
-
         if (!instanceHandles[i]) {
             fprintf(stderr, "\njack-dssi-host: Error: Failed to instantiate instance %d!, plugin \"%s\"\n",
                     i, plugin->label);
             return 1;
         }
+	if (projectDirectory && plugin->descriptor->configure) {
+	    char *rv =plugin->descriptor->configure(instanceHandles[i],
+						    DSSI_PROJECT_DIRECTORY_KEY,
+						    projectDirectory);
+	    if (rv) {
+		fprintf(stderr, "jack-dssi-host: Warning: plugin doesn't like project directory: \"%s\"\n", rv);
+	    }
+	}
     }
 
     /* Create OSC thread */
@@ -1508,6 +1535,10 @@ osc_update_handler(d3h_instance_t *instance, lo_arg **argv)
     instance->ui_osc_control_path = (char *)malloc(strlen(path) + 10);
     sprintf(instance->ui_osc_control_path, "%s/control", path);
 
+    if (instance->ui_osc_configure_path) free(instance->ui_osc_configure_path);
+    instance->ui_osc_configure_path = (char *)malloc(strlen(path) + 12);
+    sprintf(instance->ui_osc_configure_path, "%s/configure", path);
+
     if (instance->ui_osc_program_path) free(instance->ui_osc_program_path);
     instance->ui_osc_program_path = (char *)malloc(strlen(path) + 10);
     sprintf(instance->ui_osc_program_path, "%s/program", path);
@@ -1536,7 +1567,13 @@ osc_update_handler(d3h_instance_t *instance, lo_arg **argv)
      * configure() on the UI to set any state that it had remembered
      * for the plugin instance.  But we don't remember state for
      * plugin instances (see our own configure() implementation in
-     * osc_configure_handler), and so we have nothing to send. */
+     * osc_configure_handler), and so we have nothing to send except
+     * the optional project directory. */
+
+    if (projectDirectory) {
+	lo_send(instance->uiTarget, instance->ui_osc_configure_path, "ss",
+		DSSI_PROJECT_DIRECTORY_KEY, projectDirectory);
+    }
 
     return 0;
 }

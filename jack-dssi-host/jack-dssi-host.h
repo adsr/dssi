@@ -82,6 +82,7 @@ struct _d3h_instance_t {
     int              ui_initial_show_sent;
     int              uiNeedsProgramUpdate;
     char            *ui_osc_control_path;
+    char            *ui_osc_configure_path;
     char            *ui_osc_program_path;
     char            *ui_osc_show_path;
 };

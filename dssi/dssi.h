@@ -135,10 +135,22 @@ typedef struct _DSSI_Descriptor {
      *
      * Calling configure() completely invalidates the program and bank
      * information last obtained from the plugin.
+     *
+     * The Magic DSSI_PROJECT_DIRECTORY Key
+     * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+     * A host may call configure() with the special magic key
+     * DSSI_PROJECT_DIRECTORY and a directory path value.  This
+     * indicates to the plugin and its UI that a directory at that
+     * path exists and may be used for project-local data.  Plugins
+     * may wish to use the project directory as a fallback location
+     * when looking for other file data, or as a base for relative
+     * paths in other configuration values.
      */
-     char *(*configure)(LADSPA_Handle Instance,
-			const char *Key,
-			const char *Value);
+    char *(*configure)(LADSPA_Handle Instance,
+		       const char *Key,
+		       const char *Value);
+
+    #define DSSI_PROJECT_DIRECTORY_KEY "DSSI_PROJECT_DIRECTORY"
 
     /**
      * get_program()
