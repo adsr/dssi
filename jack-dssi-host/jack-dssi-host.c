@@ -228,7 +228,9 @@ audio_callback(jack_nframes_t nframes, void *arg)
         }
 
         instance = channel2instance[ev->data.note.channel];
-        if (!instance || instance->inactive) {
+        if (!instance
+	    /* || instance->inactive */) /* no -- see comment in osc_exiting_handler */
+	{
             /* discard messages intended for channels we aren't using or
 	       absent or exited plugins */
             continue;
@@ -321,7 +323,9 @@ audio_callback(jack_nframes_t nframes, void *arg)
     /* process pending program changes */
     for (i = 0; i < instance_count; i++) {
         instance = &instances[i];
-	if (instance->inactive) continue;
+
+	/* no -- see comment in osc_exiting_handler */
+	/* if (instance->inactive) continue; */
 
         if (instance->pendingProgramChange >= 0) {
 
@@ -366,6 +370,8 @@ audio_callback(jack_nframes_t nframes, void *arg)
 
     while (i < instance_count) {
 
+	/* no -- see comment in osc_exiting_handler */
+/*
 	if (instances[i].inactive) {
 	    int j;
 	    for (j = 0; j < instances[i].plugin->outs; ++j) {
@@ -375,7 +381,7 @@ audio_callback(jack_nframes_t nframes, void *arg)
 	    ++i;
 	    continue;
 	}
-
+*/
 	outCount += instances[i].plugin->outs;
 
         if (instances[i].plugin->descriptor->run_multiple_synths) {
@@ -1232,12 +1238,13 @@ main(int argc, char **argv)
     jack_client_close(jackClient);
 
     while (i < instance_count) {
-	if (!instances[i].inactive) {
+	/* no -- see comment in osc_exiting_handler */
+	/* if (!instances[i].inactive) { */
 	    if (instances[i].plugin->descriptor->LADSPA_Plugin->deactivate) {
 		instances[i].plugin->descriptor->LADSPA_Plugin->deactivate
 		    (instanceHandles[i]);
 	    }
-	}
+	/* } */
         if (instances[i].plugin->descriptor->LADSPA_Plugin &&
 	    instances[i].plugin->descriptor->LADSPA_Plugin->cleanup) {
             instances[i].plugin->descriptor->LADSPA_Plugin->cleanup
@@ -1543,10 +1550,17 @@ osc_exiting_handler(d3h_instance_t *instance, lo_arg **argv)
 	   instance->number);
 
     if (instance->plugin) {
+
+	/*!!! No, this isn't safe -- plugins deactivated in this way
+	  would still be included in a run_multiple_synths call unless
+	  we re-jigged the instance array at the same time -- leave it
+	  for now
 	if (instance->plugin->descriptor->LADSPA_Plugin->deactivate) {
             instance->plugin->descriptor->LADSPA_Plugin->deactivate
 		(instanceHandles[instance->number]);
 	}
+	*/
+	/* Leave this flag though, as we need it to determine when to exit */
 	instance->inactive = 1;
     }
 
@@ -1596,9 +1610,12 @@ int osc_message_handler(const char *path, const char *types, lo_arg **argv,
     }
     if (!instance)
         return osc_debug_handler(path, types, argv, argc, data, user_data);
+
+    /* no -- see comment in osc_exiting_handler */
+    /*
     if (instance->inactive) 
 	return 0;
-
+    */
     method = path + 6 + strlen(instance->friendly_name);
     if (*method != '/' || *(method + 1) == 0)
         return osc_debug_handler(path, types, argv, argc, data, user_data);
