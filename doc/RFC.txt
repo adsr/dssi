@@ -223,7 +223,6 @@ are no longer to be used.  They are:
 
    -- activate()
    -- cleanup()
-   -- connect_port()
    -- deactivate()
    -- instantiate()
 
@@ -242,6 +241,7 @@ Audio class
 ~~~~~~~~~~~
 The remaining functions belong to the audio class:
  
+   -- connect_port()
    -- run()
    -- run_adding()
    -- run_synth()
@@ -274,7 +274,7 @@ group are:
 
  2. While a function of the instantiation class is being run, the
     host may not call any functions of the other two classes, and
-    vice versa. Thus, a plugin is assured that e.g. connect_port() or
+    vice versa. Thus, a plugin is assured that e.g. instantiate() or
     deactivate() will not be called for any instance in the instance
     group until all previous control and audio function invocations
     for the instance group have finished.
@@ -354,8 +354,8 @@ host sends an update to the UI.
 (The host does not send updates to the UI for port changes that the UI
 itself initiated; likewise the UI must not send port changes back to
 the host that the host itself initiated.  A host that supports
-multiple UIs should send each change to all UIs other than the one
-that initiated it.)
+multiple UIs per plugin instance should send each change to all UIs
+for the instance other than the UI that initiated it.)
 
 Communications between the host and UI are deliberately as limited as
 possible.  There is, for example, no way for a UI to query the
@@ -557,10 +557,10 @@ or MIDI controller data.
 
 On activate(), a DSSI plugin should reset any internal state that
 changes over time and is not controlled by the host.  Anything that is
-set by the host (program data, port data, or any internal values
-derived from port data) should be left alone, or, in the case of data
-that change over time from host-provided values, reset to the values
-that were most recently set by the host.
+set by the host (configure data, program data, port data, or any
+internal values derived from these) should be left alone, or, in the
+case of data that change over time from host-provided values, reset
+to the values that were most recently set by the host.
 
 (The intention is that a host should be able to silence a plugin by
 calling deactivate followed by activate, and should know that after
