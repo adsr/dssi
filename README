@@ -84,7 +84,15 @@ examples.  The default install prefix is /usr/local.
 Test
 ----
 
-Make sure JACK is running, cd to ./examples and run:
+The quickest test (provided you've carried out the "make install"
+step) is just to run "trivial_sampler" or "fluidsynth-dssi", which
+should have been installed in your $PREFIX/bin.  Provided JACK is
+running, these should simply start up a standalone sampler/synth with
+a GUI window.  If these both work, pretty much everything else should.
+
+Here's a more descriptive test:
+
+Make sure JACK is running.  cd to ./examples and run:
 
   $ export DSSI_PATH=`pwd`
   $ ../jack-dssi-host/jack-dssi-host less_trivial_synth.so
@@ -116,6 +124,7 @@ This will create two less_trivial_synth instances and three
 FluidSynth-DSSI instances.  Note that the instances are assigned
 consecutive MIDI channels, and their outputs are spread across all
 of the available JACK physical outputs.
+
 
 Licensing
 ---------

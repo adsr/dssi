@@ -6,7 +6,7 @@ FLUID ?= $(PWD)/../fluidsynth-1.0.3
 
 export PREFIX FLUID
 
-all:	doc/RFC.html
+all:	doc/RFC.html doc/why-use.html
 	@$(MAKE) -C jack-dssi-host
 	@$(MAKE) -C examples
 	@$(MAKE) -C tests
