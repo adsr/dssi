@@ -221,7 +221,7 @@ int
 audio_callback(jack_nframes_t nframes, void *arg)
 {
     int i;
-    int outCount;
+    int outCount, inCount;
     d3h_instance_t *instance;
     struct timeval tv, evtv, diff;
     long framediff;
@@ -380,6 +380,14 @@ audio_callback(jack_nframes_t nframes, void *arg)
         }
     }
 
+    for (inCount = 0; inCount < insTotal; ++inCount) {
+
+	jack_default_audio_sample_t *buffer =
+	    jack_port_get_buffer(inputPorts[inCount], nframes);
+	
+	memcpy(pluginInputBuffers[inCount], buffer, nframes * sizeof(LADSPA_Data));
+    }
+
     /* call run_synth() or run_multiple_synths() for all instances */
 
     i = 0;
@@ -409,13 +417,20 @@ audio_callback(jack_nframes_t nframes, void *arg)
                  instanceEventBuffers + i,
                  instanceEventCounts + i);
             i += instances[i].plugin->instances;
-        } else {
+        } else if (instances[i].plugin->descriptor->run_synth) {
             instances[i].plugin->descriptor->run_synth(instanceHandles[i],
                                                        nframes,
                                                        instanceEventBuffers[i],
                                                        instanceEventCounts[i]);
             i++;
-        }
+        } else if (instances[i].plugin->descriptor->LADSPA_Plugin->run) {
+	    instances[i].plugin->descriptor->LADSPA_Plugin->run(instanceHandles[i],
+								nframes);
+	    i++;
+	} else {
+	    fprintf(stderr, "DSSI plugin %d has no run_multiple_synths, run_synth or run method!\n", i);
+	    i++;
+	}
     }
 
     assert(sizeof(LADSPA_Data) == sizeof(jack_default_audio_sample_t));
