@@ -203,7 +203,7 @@ void
 SynthGUI::timbreChanged(int value)
 {
     float val = float(value) / 100.0;
-    m_releaseLabel->setText(QString("%1").arg(val));
+    m_timbreLabel->setText(QString("%1").arg(val));
 
     if (!m_suppressHostUpdate) {
 	lo_send(m_host, m_path, "if", LTS_PORT_TIMBRE, val);
