@@ -166,10 +166,10 @@ typedef struct _DSSI_Descriptor {
      * argument to this function is needed to support synths that use
      * non-contiguous program or bank numbers.)
      */
-    const int (*get_program)(LADSPA_Handle Instance,
-			     unsigned long Index,
-			     DSSI_Program_Descriptor *Descriptor);
-
+    int (*get_program)(LADSPA_Handle Instance,
+		       unsigned long Index,
+		       DSSI_Program_Descriptor *Descriptor);
+    
     /**
      * select_program()
      *
