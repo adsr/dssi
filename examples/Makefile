@@ -5,7 +5,8 @@ TARGETS = \
 	less_trivial_synth.so \
 	dssi_osc_send \
 	dssi_osc_update \
-	less_trivial_synth_qt_gui
+	less_trivial_synth_qt_gui \
+	less_trivial_synth/LTS_qt \
 
 all: $(TARGETS)
 
@@ -30,6 +31,10 @@ less_trivial_synth_qt_gui.moc.cpp:	less_trivial_synth_qt_gui.h
 
 less_trivial_synth_qt_gui: less_trivial_synth_qt_gui.o less_trivial_synth_qt_gui.moc.o
 	$(CXX) -o $@ $^ $(QTGUI_LDLIBS)
+
+less_trivial_synth/LTS_qt: less_trivial_synth_qt_gui
+	mkdir -p less_trivial_synth
+	cp less_trivial_synth_qt_gui less_trivial_synth/LTS_qt
 
 %.so: %.o ../dssi/dssi.h message_buffer.o
 	gcc -nostartfiles -shared -lc -lm -o $*.so $*.o message_buffer.o

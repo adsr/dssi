@@ -312,10 +312,12 @@ main(int argc, char **argv)
 {
     QApplication application(argc, argv);
 
-    if (application.argc() != 2) {
+    if (application.argc() != 4) {
 	cerr << "usage: "
 	     << application.argv()[0] 
 	     << " <osc url>"
+	     << " <plugin dllname>"
+	     << " <plugin label>"
 	     << endl;
 	return 2;
     }

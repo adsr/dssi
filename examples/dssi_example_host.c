@@ -23,6 +23,10 @@
 #include <dlfcn.h>
 #include <unistd.h>
 #include <sys/types.h>
+#include <sys/stat.h>
+#include <signal.h>
+#include <dirent.h>
+
 #include <lo/lo.h>
 
 #include "message_buffer.h"
@@ -48,6 +52,8 @@ static const char osc_path[32];
 lo_server_thread serverThread;
 lo_target uiTarget;
 
+static sigset_t _signals;
+
 #define EVENT_BUFFER_SIZE 1024
 static snd_seq_event_t midiEventBuffer[EVENT_BUFFER_SIZE]; /* ring buffer */
 static int midiEventReadIndex = 0, midiEventWriteIndex = 0;
@@ -65,6 +71,14 @@ int update_handler(const char *path, const char *types, lo_arg **argv, int
 		    argc, void *data, void *user_data) ;
 int debug_handler(const char *path, const char *types, lo_arg **argv, int
 		    argc, void *data, void *user_data) ;
+
+void
+signalHandler(int sig)
+{
+    fprintf(stderr, "signal caught, exiting\n");
+    kill(0, sig);
+    exit(0);
+}
 
 void
 midi_callback()
@@ -210,8 +224,8 @@ audio_callback(jack_nframes_t nframes, void *arg)
     return 0;
 }
 
-void *
-load(const char *dllName)
+char *
+load(const char *dllName, void **dll) /* returns directory where dll found */
 {
     char *dssiPath = getenv("DSSI_PATH");
     char *ladspaPath = getenv("LADSPA_PATH");
@@ -234,6 +248,7 @@ load(const char *dllName)
 	    ladspaPath ? ladspaPath : "");
 
     origPath = path;
+    *dll = 0;
 
     while ((element = strtok(path, ":")) != 0) {
 
@@ -251,7 +266,8 @@ load(const char *dllName)
 
 	if ((handle = dlopen(filePath, RTLD_LAZY))) {
 	    fprintf(stderr, "found\n");
-	    return handle;
+	    *dll = handle;
+	    return strdup(element);
 	}
 
 	fprintf(stderr, "nope\n");
@@ -259,6 +275,78 @@ load(const char *dllName)
     
     return 0;
 }
+
+void
+startGUI(const char *directory, const char *dllName, const char *label,
+	 const char *oscUrl)
+{
+    struct dirent *entry;
+    char *dllBase = strdup(dllName);
+    char *subpath;
+    DIR *subdir;
+    char *filename;
+    struct stat buf;
+	
+    if (!strcasecmp(dllBase + strlen(dllBase) - 3, ".so")) {
+	dllBase[strlen(dllBase) - 3] = '\0';
+    }
+
+    subpath = (char *)malloc(strlen(directory) + strlen(dllBase) + 2);
+    sprintf(subpath, "%s/%s", directory, dllBase);
+
+    if (!(subdir = opendir(subpath))) {
+	fprintf(stderr, "can't open plugin GUI directory \"%s\"\n", subpath);
+	free(subpath);
+	return;
+    }
+
+    while ((entry = readdir(subdir))) {
+	
+	if (entry->d_name[0] == '.') continue;
+	if (strncmp(entry->d_name, label, strlen(label))) continue;
+
+	filename = (char *)malloc(strlen(subpath) + strlen(entry->d_name) + 2);
+	sprintf(filename, "%s/%s", subpath, entry->d_name);
+
+	if (stat(filename, &buf)) {
+	    perror("stat failed");
+	    free(filename);
+	    continue;
+	}
+
+	if (S_ISREG(buf.st_mode) &&
+	    (buf.st_mode & (S_IXUSR | S_IXGRP | S_IXOTH))) {
+
+	    pid_t child;
+
+	    fprintf(stderr, "trying to execute GUI at \"%s\"\n",
+		    filename);
+	 
+	    if ((child = fork()) < 0) {
+
+		perror("fork failed");
+
+	    } else if (child == 0) { // child process
+
+		if (execlp(filename, filename, oscUrl, dllName, label, 0)) {
+		    perror("exec failed");
+		    exit(1);
+		}
+	    }
+
+	    free(filename);
+	    free(subpath);
+	    return;
+	}
+
+	free(filename);
+    }	
+
+    fprintf(stderr, "no GUI found for plugin \"%s\" in \"%s/\"\n",
+	    label, subpath);
+    free(subpath);
+}
+
 
 int
 main(int argc, char **argv)
@@ -270,10 +358,23 @@ main(int argc, char **argv)
     char *dllName;
     char *label = 0;
     void *pluginObject = 0;
+    char *directory;
     const char **ports;
     char update_path[32];
     char *tmp;
+    char *url;
     int i;
+
+    setsid();
+    sigemptyset (&_signals);
+    sigaddset(&_signals, SIGHUP);
+    sigaddset(&_signals, SIGINT);
+    sigaddset(&_signals, SIGQUIT);
+    sigaddset(&_signals, SIGPIPE);
+    sigaddset(&_signals, SIGTERM);
+    sigaddset(&_signals, SIGUSR1);
+    sigaddset(&_signals, SIGUSR2);
+    pthread_sigmask(SIG_BLOCK, &_signals, 0);
 
     /* Parse args and report usage */
 
@@ -287,7 +388,9 @@ main(int argc, char **argv)
 
     /* Load plugin DLL and look for requested plugin */
 
-    if (!(pluginObject = load(dllName))) {
+    directory = load(dllName, &pluginObject);
+
+    if (!directory || !pluginObject) {
 	fprintf(stderr, "Error: Failed to load plugin DLL %s\n", dllName);
 	return 1;
     }
@@ -379,7 +482,7 @@ main(int argc, char **argv)
 
     jack_set_process_callback(jackClient, audio_callback, 0);
 
-    /* Instantiate and connect plugin */
+    /* Instantiate plugin */
 
     pluginHandle = pluginDescriptor->LADSPA_Plugin->instantiate
 	(pluginDescriptor->LADSPA_Plugin, jack_get_sample_rate(jackClient));
@@ -395,7 +498,9 @@ main(int argc, char **argv)
     snprintf((char *)osc_path, 31, "/dssi/test.1");
     snprintf(update_path, 31, "%s/update", osc_path);
     tmp = lo_server_thread_get_url(serverThread);
-    printf("registering %s%s\n", tmp, osc_path+1);
+    url = (char *)malloc(strlen(tmp) + strlen(osc_path));
+    sprintf(url, "%s%s", tmp, osc_path + 1);
+    printf("registering %s\n", url);
     free(tmp);
 
     lo_server_thread_add_method(serverThread, osc_path, "if", osc_handler,
@@ -405,6 +510,8 @@ main(int argc, char **argv)
     lo_server_thread_add_method(serverThread, NULL, NULL, debug_handler,
 				NULL);
     lo_server_thread_start(serverThread);
+
+    /* Connect and activate plugin */
 
     ins = outs = controlIns = controlOuts = 0;
     
@@ -514,6 +621,17 @@ main(int argc, char **argv)
       }
     }
     if (ports) free(ports);
+
+    signal(SIGINT, signalHandler);
+    signal(SIGTERM, signalHandler);
+    signal(SIGHUP, signalHandler);
+    signal(SIGQUIT, signalHandler);
+    pthread_sigmask(SIG_UNBLOCK, &_signals, 0);
+
+    /* Attempt to locate and start up a GUI for the plugin -- but
+       continue even if we can't */
+
+    startGUI(directory, dllName, pluginDescriptor->LADSPA_Plugin->Label, url);
 
     MB_MESSAGE("Ready\n");
 
