@@ -1342,6 +1342,7 @@ main(int argc, char **argv)
             snprintf(osc_path_tmp, 1024, "%s/%s", url, instances[i].friendly_name);
             snprintf(tag, 12, "channel %d", instances[i].channel);
             printf("\n%s: OSC URL is:\n%s\n\n", myName, osc_path_tmp);
+	    fflush(stdout);
             startGUI(plugin->dll->directory, plugin->dll->name,
                     plugin->descriptor->LADSPA_Plugin->Label, osc_path_tmp, tag);
         }
