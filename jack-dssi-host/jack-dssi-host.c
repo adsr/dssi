@@ -205,10 +205,12 @@ setControl(d3h_instance_t *instance, long controlIn, snd_seq_event_t *event)
 	    }
 	}
     }
-    
-    printf("%s: %s MIDI controller %d=%d -> control in %ld=%f\n", myName,
-	   instance->friendly_name, event->data.control.param,
-           event->data.control.value, controlIn, value);
+
+    if (verbose) {
+	printf("%s: %s MIDI controller %d=%d -> control in %ld=%f\n", myName,
+	       instance->friendly_name, event->data.control.param,
+	       event->data.control.value, controlIn, value);
+    }
 
     pluginControlIns[controlIn] = value;
     pluginPortUpdated[controlIn] = 1;
@@ -439,12 +441,8 @@ load(const char *dllName, void **dll, int quiet) /* returns directory where dll 
     /* If the dllName is an absolute path */
     if (*dllName == '/') {
 	if ((handle = dlopen(dllName, RTLD_NOW))) {  /* real-time programs should not use RTLD_LAZY */
-	    if (!quiet) {
-		fprintf(stderr, "found\n");
-	    }
 	    *dll = handle;
             path = strdup(dllName);
-
 	    return dirname(path);
 	} else {
 	    if (!quiet) {
@@ -484,7 +482,7 @@ load(const char *dllName, void **dll, int quiet) /* returns directory where dll 
 	    continue;
 	}
 
-	if (!quiet) {
+	if (!quiet && verbose) {
 	    fprintf(stderr, "%s: Looking for library \"%s\" in %s... ", myName, dllName, element);
 	}
 
@@ -492,7 +490,7 @@ load(const char *dllName, void **dll, int quiet) /* returns directory where dll 
 	sprintf(filePath, "%s/%s", element, dllName);
 
 	if ((handle = dlopen(filePath, RTLD_NOW))) {  /* real-time programs should not use RTLD_LAZY */
-	    if (!quiet) {
+	    if (!quiet && verbose) {
 		fprintf(stderr, "found\n");
 	    }
 	    *dll = handle;
@@ -501,7 +499,7 @@ load(const char *dllName, void **dll, int quiet) /* returns directory where dll 
 	    return path;
 	}
 
-	if (!quiet) {
+	if (!quiet && verbose) {
 	    message = dlerror();
 	    if (message) {
 		fprintf(stderr, "not found: %s\n", message);
@@ -556,7 +554,9 @@ startGUI(const char *directory, const char *dllName, const char *label,
     for (fuzzy = 0; fuzzy <= 1; ++fuzzy) {
 
 	if (!(subdir = opendir(subpath))) {
-	    fprintf(stderr, "%s: can't open plugin GUI directory \"%s\"\n", myName, subpath);
+	    if (verbose) {
+		fprintf(stderr, "%s: can't open plugin GUI directory \"%s\"\n", myName, subpath);
+	    }
 	    free(subpath);
 	    free(dllBase);
 	    return;
@@ -568,10 +568,14 @@ startGUI(const char *directory, const char *dllName, const char *label,
 	    if (!strchr(entry->d_name, '_')) continue;
 
 	    if (fuzzy) {
-		fprintf(stderr, "checking %s against %s\n", entry->d_name, dllBase);
+		if (verbose) {
+		    fprintf(stderr, "checking %s against %s\n", entry->d_name, dllBase);
+		}
 		if (strncmp(entry->d_name, dllBase, strlen(dllBase))) continue;
 	    } else {
-		fprintf(stderr, "checking %s against %s\n", entry->d_name, label);
+		if (verbose) {
+		    fprintf(stderr, "checking %s against %s\n", entry->d_name, label);
+		}
 		if (strncmp(entry->d_name, label, strlen(label))) continue;
 	    }
 	    
@@ -586,9 +590,11 @@ startGUI(const char *directory, const char *dllName, const char *label,
 	    
 	    if ((S_ISREG(buf.st_mode) || S_ISLNK(buf.st_mode)) &&
 		(buf.st_mode & (S_IXUSR | S_IXGRP | S_IXOTH))) {
-		
-		fprintf(stderr, "%s: trying to execute GUI at \"%s\"\n",
-			myName, filename);
+
+		if (verbose) {
+		    fprintf(stderr, "%s: trying to execute GUI at \"%s\"\n",
+			    myName, filename);
+		}
 		
 		if (fork() == 0) {
 		    execlp(filename, filename, oscUrl, dllName, label, instanceTag, 0);
@@ -606,8 +612,10 @@ startGUI(const char *directory, const char *dllName, const char *label,
 	}
     }	
 
-    fprintf(stderr, "%s: no GUI found for plugin \"%s\" in \"%s/\"\n",
-	    myName, label, subpath);
+    if (verbose) {
+	fprintf(stderr, "%s: no GUI found for plugin \"%s\" in \"%s/\"\n",
+		myName, label, subpath);
+    }
     free(subpath);
     free(dllBase);
 }
@@ -649,11 +657,13 @@ query_programs(d3h_instance_t *instance)
 		instance->pluginPrograms[i].Bank = descriptor->Bank;
 		instance->pluginPrograms[i].Program = descriptor->Program;
 		instance->pluginPrograms[i].Name = strdup(descriptor->Name);
-                printf("%s: %s program %d is MIDI bank %lu program %lu, named '%s'\n",
-		       myName, instance->friendly_name, i,
-                       instance->pluginPrograms[i].Bank,
-                       instance->pluginPrograms[i].Program,
-                       instance->pluginPrograms[i].Name);
+		if (verbose) {
+		    printf("%s: %s program %d is MIDI bank %lu program %lu, named '%s'\n",
+			   myName, instance->friendly_name, i,
+			   instance->pluginPrograms[i].Bank,
+			   instance->pluginPrograms[i].Program,
+			   instance->pluginPrograms[i].Name);
+		}
 	    }
 	}
     }
@@ -731,8 +741,10 @@ main(int argc, char **argv)
 	fprintf(stderr,"\nAs a special case, if this program is started with a name other than\njack-dssi-host, and if that name (plus .so suffix) can be found in the DSSI path\nas a valid plugin library, and if no further command line arguments are given,\nthen the first plugin in that library will be loaded automatically.\n\n");
 	return 2;
     }
-
-    fprintf(stderr, "%s: Starting...\n", myName);
+   
+    if (verbose) {
+	fprintf(stderr, "%s: Starting...\n", myName);
+    }
 
     projectDirectory = NULL;
 
@@ -948,9 +960,11 @@ main(int argc, char **argv)
         instance = &instances[i];
         instance->number = i;
         channel2instance[instance->channel] = instance;
-        fprintf(stderr, "%s: instance %2d on channel %2d, plugin %2d is \"%s\"\n",
-		myName, i, instance->channel, instance->plugin->number,
-                instance->friendly_name);
+	if (verbose) {
+	    fprintf(stderr, "%s: instance %2d on channel %2d, plugin %2d is \"%s\"\n",
+		    myName, i, instance->channel, instance->plugin->number,
+		    instance->friendly_name);
+	}
     }
 
     /* Create buffers and JACK client and ports */
@@ -1085,7 +1099,9 @@ main(int argc, char **argv)
     tmp = lo_server_thread_get_url(serverThread);
     url = (char *)malloc(strlen(tmp) + strlen(osc_path_tmp));
     sprintf(url, "%s%s", tmp, osc_path_tmp + 1);
-    printf("%s: registering %s\n", myName, url);
+    if (verbose) {
+	printf("%s: registering %s\n", myName, url);
+    }
     free(tmp);
 
     lo_server_thread_add_method(serverThread, NULL, NULL, osc_message_handler,
@@ -1488,10 +1504,12 @@ osc_program_handler(d3h_instance_t *instance, lo_arg **argv)
     for (i = 0; i < instance->pluginProgramCount; ++i) {
 	if (instance->pluginPrograms[i].Bank == bank &&
 	    instance->pluginPrograms[i].Program == program) {
-	    printf("%s: OSC: %s setting bank %d, program %d, name %s\n",
-		   myName,
-                   instance->friendly_name, bank, program,
-                   instance->pluginPrograms[i].Name);
+	    if (verbose) {
+		printf("%s: OSC: %s setting bank %d, program %d, name %s\n",
+		       myName,
+		       instance->friendly_name, bank, program,
+		       instance->pluginPrograms[i].Name);
+	    }
 	    found = 1;
 	    break;
 	}
@@ -1551,7 +1569,7 @@ osc_configure_handler(d3h_instance_t *instance, lo_arg **argv)
 	    message = instances[n].plugin->descriptor->configure
 		(instanceHandles[n], key, value);
 	    if (message) {
-		printf("%s: on configure '%s' '%s', plugin '%s' returned '%s'\n",
+		printf("%s: on configure '%s' '%s', plugin '%s' returned error '%s'\n",
 		       myName, key, value, instance->friendly_name, message);
 		free(message);
 	    }
@@ -1659,8 +1677,10 @@ osc_exiting_handler(d3h_instance_t *instance, lo_arg **argv)
 {
     int i;
 
-    printf("%s: OSC: got exiting notification for instance %d\n", myName,
-	   instance->number);
+    if (verbose) {
+	printf("%s: OSC: got exiting notification for instance %d\n", myName,
+	       instance->number);
+    }
 
     if (instance->plugin) {
 
@@ -1683,7 +1703,9 @@ osc_exiting_handler(d3h_instance_t *instance, lo_arg **argv)
 	if (!instances[i].inactive) return 0;
     }
 
-    printf("%s: That was the last remaining plugin, exiting...\n", myName);
+    if (verbose) {
+	printf("%s: That was the last remaining plugin, exiting...\n", myName);
+    }
     exiting = 1;
     return 0;
 }
