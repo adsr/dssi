@@ -1,4 +1,4 @@
-/* -*- c-basic-offset: 4 -*- */
+/* -*- c-basic-offset: 4 -*-  vi:set ts=8 sts=4 sw=4: */
 
 /* trivial_synth.c
 
@@ -21,6 +21,7 @@
 
 #define TS_OUTPUT 0
 #define TS_FREQ   1
+#define TS_VOLUME 2
 
 #define MIDI_NOTES 128
 
@@ -169,6 +170,18 @@ static void runTS(LADSPA_Handle instance, unsigned long sample_count,
     }
 }
 
+int getControllerTS(LADSPA_Handle instance, unsigned long port)
+{
+    switch (port) {
+    case TS_VOLUME:
+	return 7;
+    case TS_FREQ:
+	return 9;
+    }
+
+    return -1;
+}
+
 void _init()
 {
     char **port_names;
@@ -184,7 +197,7 @@ void _init()
 	tsLDescriptor->Name = "Trivial synth";
 	tsLDescriptor->Maker = "Steve Harris <steve@plugin.org.uk>";
 	tsLDescriptor->Copyright = "Public Domain";
-	tsLDescriptor->PortCount = 2;
+	tsLDescriptor->PortCount = 3;
 
 	port_descriptors = (LADSPA_PortDescriptor *)
 				calloc(tsLDescriptor->PortCount, sizeof
@@ -214,6 +227,15 @@ void _init()
 	port_range_hints[TS_FREQ].LowerBound = 420;
 	port_range_hints[TS_FREQ].UpperBound = 460;
 
+	/* Parameters for Volume */
+	port_descriptors[TS_VOLUME] = LADSPA_PORT_INPUT | LADSPA_PORT_CONTROL;
+	port_names[TS_VOLUME] = "Volume";
+	port_range_hints[TS_VOLUME].HintDescriptor =
+			LADSPA_HINT_DEFAULT_MAXIMUM |
+			LADSPA_HINT_BOUNDED_BELOW | LADSPA_HINT_BOUNDED_ABOVE;
+	port_range_hints[TS_VOLUME].LowerBound = 0.0;
+	port_range_hints[TS_VOLUME].UpperBound = 1.0;
+
 	tsLDescriptor->activate = activateTS;
 	tsLDescriptor->cleanup = cleanupTS;
 	tsLDescriptor->connect_port = connectPortTS;
@@ -230,6 +252,7 @@ void _init()
 	tsDDescriptor->LADSPA_Plugin = tsLDescriptor;
 	tsDDescriptor->configure = NULL;
 	tsDDescriptor->get_program = NULL;
+	tsDDescriptor->get_midi_controller_for_port = getControllerTS;
 	tsDDescriptor->select_program = NULL;
 	tsDDescriptor->run_synth = runTS;
     }
