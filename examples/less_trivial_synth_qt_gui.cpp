@@ -15,6 +15,7 @@
 #include <qapplication.h>
 #include <qpushbutton.h>
 #include <iostream>
+#include <unistd.h>
 
 using std::cerr;
 using std::endl;
