@@ -16,7 +16,8 @@ The proposal consists of this RFC, which describes the background and
 defines part of the proposed standard, plus a documented header file
 (dssi.h) which defines the remainder.  The distribution also contains
 a handful of public-domain example files including an almost complete
-host implementation.  The API itself is licensed under the LGPL.
+(but not pretty) host implementation and a simple synth plugin with a
+GUI.  The API itself is licensed under the LGPL.
 
 This proposal was constructed by Steve Harris (steve@plugin.org.uk)
 and Chris Cannam (cannam@all-day-breakfast.com).

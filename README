@@ -1,18 +1,21 @@
 
+DSSI
+----
+
 This is the Disposable Soft Synth Interface specification & example
 code repository.
 
 You'll find here:
 
-  doc/RFC.txt -- proposed DSSI specification
+  doc/RFC.txt -- proposed DSSI specification -- read this first
 
-  dssi/dssi.h -- DSSI header file (also part of the specification)
+  dssi/dssi.h -- DSSI header file -- the comments define those parts
+  of the spec dealing with host/plugin interaction (not covered in RFC)
 
   examples/dssi_osc_send.c
   examples/dssi_osc_update.c -- simple DSSI OSC test programs
 
-  examples/dssi_example_host.c -- a basic, public-domain example host
-  implementation
+  examples/dssi_example_host.c -- a basic example host implementation
 
   examples/trivial_synth.c -- a quite useless but fairly clear
   illustrative synth plugin
@@ -22,6 +25,10 @@ You'll find here:
 
   examples/less_trivial_synth_qt_gui.cpp -- a very simple Qt GUI
   for the above
+
+
+Build
+-----
 
 To build the example code you will need:
 
@@ -35,16 +42,38 @@ To build the example code you will need:
 So long as PKG_CONFIG_PATH and QTDIR are set appropriately, a "make"
 in the examples directory should build everything.
 
-To test: make sure JACK is running, cd to examples and run
+
+Test
+----
+
+Make sure JACK is running, cd to ./examples and run
 
   $ export DSSI_PATH=`pwd`
   $ ./dssi_example_host less_trivial_synth.so
 
 A synth GUI should pop up, with an ALSA sequencer input and JACK
-output.  What has actually happened (if it worked) is that the host
-process has been started, has loaded the first synth plugin (labelled
-LTS) found in the given .so file, has located the GUI executable that
-the make procedure installed into examples/less_trivial_synth/LTS_qt,
+output (connected by default to the first alsa_pcm out).  If you
+connect a MIDI keyboard (or vkeybd) to its ALSA MIDI input, you should
+be able to play it and use MIDI controllers to adjust its parameters:
+MIDI CC1 (the modulation wheel) controls timbre, and controllers 72,
+73, 75 and 79 control release, attack, decay and sustain respectively
+(some keyboards already have controls set up for these values).
+
+What has actually happened (if it worked) is that the host process has
+been started, has loaded the first synth plugin (labelled LTS) found
+in the given .so file, has located the GUI executable that the make
+procedure installed into examples/less_trivial_synth/LTS_qt,
 instantiated the plugin, started the GUI and is now managing the MIDI
 input from ALSA, control changes from the GUI and audio out to JACK.
+
+
+Licensing
+---------
+
+The DSSI API itself (dssi.h) is licensed under the GNU Lesser General
+Public License.  See COPYING for details.
+
+Licensing for the files in the examples directory may vary: please
+check the individual files for details.  Most of them are in the
+public domain, which means you can use them for anything you want.
 
