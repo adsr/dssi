@@ -13,6 +13,7 @@
 #include "less_trivial_synth_qt_gui.h"
 
 #include <qapplication.h>
+#include <qpushbutton.h>
 #include <iostream>
 
 using std::cerr;
@@ -33,7 +34,7 @@ SynthGUI::SynthGUI(char *host, char *port, char *path, QWidget *w) :
 {
     m_host = lo_address_new(host, port);
 
-    QGridLayout *layout = new QGridLayout(this, 3, 5, 5, 5);
+    QGridLayout *layout = new QGridLayout(this, 3, 7, 5, 5);
     
     m_tuning  = new QDial(100, 600, 10, 400, this); // (Hz - 400) * 10
     m_attack  = new QDial(  1, 100,  1,  25, this); // s * 100
@@ -55,7 +56,7 @@ SynthGUI::SynthGUI(char *host, char *port, char *path, QWidget *w) :
     m_sustainLabel = new QLabel(this);
     m_releaseLabel = new QLabel(this);
     m_timbreLabel  = new QLabel(this);
-    
+
     layout->addWidget(new QLabel("Pitch of A", this), 0, 0, Qt::AlignCenter);
     layout->addWidget(new QLabel("Attack",     this), 0, 1, Qt::AlignCenter);
     layout->addWidget(new QLabel("Decay",      this), 0, 2, Qt::AlignCenter);
@@ -91,6 +92,10 @@ SynthGUI::SynthGUI(char *host, char *port, char *path, QWidget *w) :
     sustainChanged(m_sustain->value());
     releaseChanged(m_release->value());
     timbreChanged (m_timbre ->value());
+
+    QPushButton *testButton = new QPushButton("Test", this);
+    connect(testButton, SIGNAL(clicked()), this, SLOT(test()));
+    layout->addWidget(testButton, 2, 6, Qt::AlignCenter);
 
     m_suppressHostUpdate = false;
 }
@@ -208,6 +213,12 @@ SynthGUI::timbreChanged(int value)
     if (!m_suppressHostUpdate) {
 	lo_send(m_host, m_path, "if", LTS_PORT_TIMBRE, val);
     }
+}
+
+void
+SynthGUI::test()
+{
+    cerr << "Test button clicked!" << endl;
 }
 
 SynthGUI::~SynthGUI()

@@ -45,6 +45,7 @@ protected slots:
     void sustainChanged(int);
     void releaseChanged(int);
     void timbreChanged (int);
+    void test();
 
 protected:
     QDial *m_tuning;
