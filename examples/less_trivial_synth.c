@@ -261,7 +261,7 @@ static void runLTS(LADSPA_Handle instance, unsigned long sample_count,
 	    } else if (events[event_pos].type == SND_SEQ_EVENT_PITCHBEND) {
 		vals.pitch =
 		    powf(2.0f, (float)(events[event_pos].data.control.value)
-			 * 0.0001220703125f);
+			 * 0.0001220703125f * 0.166666666f);
 		plugin_data->pitch = vals.pitch;
 	    }
 	    event_pos++;
