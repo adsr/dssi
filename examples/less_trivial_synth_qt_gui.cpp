@@ -16,23 +16,22 @@
 #include <qapplication.h>
 #include <iostream>
 
+using std::cerr;
+using std::endl;
+
 #define LTS_PORT_FREQ    1
 #define LTS_PORT_ATTACK  2
 #define LTS_PORT_DECAY   3
 #define LTS_PORT_SUSTAIN 4
 #define LTS_PORT_RELEASE 5
 
-#define TEST_PATH "/dssi/test.1"
 
-SynthGUI::SynthGUI(char *url, QWidget *w) :
+SynthGUI::SynthGUI(char *host, char *port, char *path, QWidget *w) :
     QFrame(w),
+    m_path(path),
     m_suppressHostUpdate(true)
 {
-    char *host = osc_url_get_hostname(url);
-    char *port = osc_url_get_port(url);
-//    char *path = osc_url_get_path(url);
-
-    m_host = lo_target_new(host, port);
+    m_host = lo_address_new(host, port);
 
     QGridLayout *layout = new QGridLayout(this, 3, 5, 5, 5);
     
@@ -92,7 +91,7 @@ void
 SynthGUI::setTuning(float hz)
 {
     m_suppressHostUpdate = true;
-    m_tuning->setValue(int((hz - 400.0) / 10.0));
+    m_tuning->setValue(int((hz - 400.0) * 10.0));
     m_suppressHostUpdate = false;
 }
 
@@ -135,9 +134,9 @@ SynthGUI::tuningChanged(int value)
     m_tuningLabel->setText(QString("%1 Hz").arg(hz));
 
     if (!m_suppressHostUpdate) {
-	std::cerr << "Sending to host: " << TEST_PATH
-		  << " port " << LTS_PORT_FREQ << " to " << hz << std::endl;
-	lo_send(m_host, TEST_PATH, "if", LTS_PORT_FREQ, hz);
+	cerr << "Sending to host: " << m_path
+	     << " port " << LTS_PORT_FREQ << " to " << hz << endl;
+	lo_send(m_host, m_path, "if", LTS_PORT_FREQ, hz);
     }
 }
 
@@ -148,7 +147,7 @@ SynthGUI::attackChanged(int value)
     m_attackLabel->setText(QString("%1 sec").arg(sec));
 
     if (!m_suppressHostUpdate) {
-	lo_send(m_host, TEST_PATH, "if", LTS_PORT_ATTACK, sec);
+	lo_send(m_host, m_path, "if", LTS_PORT_ATTACK, sec);
     }
 }
 
@@ -159,7 +158,7 @@ SynthGUI::decayChanged(int value)
     m_decayLabel->setText(QString("%1 sec").arg(sec));
 
     if (!m_suppressHostUpdate) {
-	lo_send(m_host, TEST_PATH, "if", LTS_PORT_DECAY, sec);
+	lo_send(m_host, m_path, "if", LTS_PORT_DECAY, sec);
     }
 }
 
@@ -169,7 +168,7 @@ SynthGUI::sustainChanged(int value)
     m_sustainLabel->setText(QString("%1 %").arg(value));
 
     if (!m_suppressHostUpdate) {
-	lo_send(m_host, TEST_PATH, "if", LTS_PORT_SUSTAIN, float(value));
+	lo_send(m_host, m_path, "if", LTS_PORT_SUSTAIN, float(value));
     }
 }
 
@@ -180,14 +179,90 @@ SynthGUI::releaseChanged(int value)
     m_releaseLabel->setText(QString("%1 sec").arg(sec));
 
     if (!m_suppressHostUpdate) {
-	lo_send(m_host, TEST_PATH, "if", LTS_PORT_RELEASE, sec);
+	lo_send(m_host, m_path, "if", LTS_PORT_RELEASE, sec);
     }
 }
 
 SynthGUI::~SynthGUI()
 {
-    lo_target_free(m_host);
+    lo_address_free(m_host);
 }
+
+
+void
+osc_error(int num, const char *msg, const char *path)
+{
+    cerr << "Error: liblo server error " << num
+	 << " in path " << path
+	 << ": " << msg << endl;
+}
+
+int
+debug_handler(const char *path, const char *types, lo_arg **argv,
+	      int argc, void *data, void *user_data)
+{
+    int i;
+
+    cerr << "Warning: unhandled OSC message:" << endl;
+
+    for (i = 0; i < argc; ++i) {
+	cerr << "arg " << i << ": type '" << types[i] << "': ";
+        lo_arg_pp(types[i], argv[i]);
+	cerr << endl;
+    }
+
+    cerr << "(path is <" << path << ">)" << endl;
+    return 1;
+}
+
+int
+update_handler(const char *path, const char *types, lo_arg **argv,
+	       int argc, void *data, void *user_data)
+{
+    SynthGUI *gui = static_cast<SynthGUI *>(user_data);
+
+    if (argc < 2) {
+	cerr << "Error: too few arguments to update_handler" << endl;
+	return 1;
+    }
+
+    const int port = argv[0]->i;
+    const float value = argv[1]->f;
+
+    switch (port) {
+
+    case LTS_PORT_FREQ:
+	cerr << "gui setting frequency to " << value << endl;
+	gui->setTuning(value);
+	break;
+
+    case LTS_PORT_ATTACK:
+	cerr << "gui setting attack to " << value << endl;
+	gui->setAttack(value);
+	break;
+
+    case LTS_PORT_DECAY:
+	cerr << "gui setting decay to " << value << endl;
+	gui->setDecay(value);
+	break;
+
+    case LTS_PORT_SUSTAIN:
+	cerr << "gui setting sustain to " << value << endl;
+	gui->setSustain(value);
+	break;
+
+    case LTS_PORT_RELEASE:
+	cerr << "gui setting release to " << value << endl;
+	gui->setRelease(value);
+	break;
+
+    default:
+	cerr << "Warning: received request to set nonexistent port " << port << endl;
+    }
+
+    return 0;
+}
+
 
 int
 main(int argc, char **argv)
@@ -195,20 +270,31 @@ main(int argc, char **argv)
     QApplication application(argc, argv);
 
     if (application.argc() != 2) {
-	std::cerr << "usage: "
-		  << application.argv()[0] 
-		  << " <osc url>"
-		  << std::endl;
+	cerr << "usage: "
+	     << application.argv()[0] 
+	     << " <osc url>"
+	     << endl;
 	return 2;
     }
 
-    SynthGUI gui(application.argv()[1]);
+    char *url = application.argv()[1];
+
+    char *host = osc_url_get_hostname(url);
+    char *port = osc_url_get_port(url);
+    char *path = osc_url_get_path(url);
+
+    SynthGUI gui(host, port, path);
     application.setMainWidget(&gui);
     gui.show();
 
-    //!!! now... updates from the host? calling the various setXXX
-    // methods on the gui object when something is received.  (we could
-    // make the gui object static for simplicity here.)
+    lo_server_thread thread = lo_server_thread_new("4445", osc_error);
+    lo_server_thread_add_method(thread, path, "if", update_handler, &gui);
+    lo_server_thread_add_method(thread, NULL, NULL, debug_handler, &gui);
+    lo_server_thread_start(thread);
+
+    lo_address hostaddr = lo_address_new(host, port);
+    lo_send(hostaddr, QString("%1/update").arg(path),
+	    "s", "osc://localhost:4445/");
 
     return application.exec();
 }
