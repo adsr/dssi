@@ -75,6 +75,8 @@ lo_server_thread serverThread;
 
 static sigset_t _signals;
 
+int exiting = 0;
+
 #define EVENT_BUFFER_SIZE 1024
 static snd_seq_event_t midiEventBuffer[EVENT_BUFFER_SIZE]; /* ring buffer */
 static int midiEventReadIndex = 0, midiEventWriteIndex = 0;
@@ -93,9 +95,8 @@ int osc_debug_handler(const char *path, const char *types, lo_arg **argv, int
 void
 signalHandler(int sig)
 {
-    fprintf(stderr, "dssi_example_host: signal caught, exiting\n");
-    kill(0, sig);
-    exit(0);
+    fprintf(stderr, "dssi_example_host: signal caught, trying to clean up and exit\n");
+    exiting = 1;
 }
 
 void
@@ -418,7 +419,8 @@ startGUI(const char *directory, const char *dllName, const char *label,
     DIR *subdir;
     char *filename;
     struct stat buf;
-	
+    int fuzzy;
+
     if (strlen(dllBase) > 3 &&
         !strcasecmp(dllBase + strlen(dllBase) - 3, ".so")) {
 	dllBase[strlen(dllBase) - 3] = '\0';
@@ -426,51 +428,64 @@ startGUI(const char *directory, const char *dllName, const char *label,
 
     subpath = (char *)malloc(strlen(directory) + strlen(dllBase) + 2);
     sprintf(subpath, "%s/%s", directory, dllBase);
-    free(dllBase);
 
-    if (!(subdir = opendir(subpath))) {
-	fprintf(stderr, "dssi_example_host: can't open plugin GUI directory \"%s\"\n", subpath);
-	free(subpath);
-	return;
-    }
+    for (fuzzy = 0; fuzzy <= 1; ++fuzzy) {
 
-    while ((entry = readdir(subdir))) {
-	
-	if (entry->d_name[0] == '.') continue;
-	if (strncmp(entry->d_name, label, strlen(label))) continue;
-
-	filename = (char *)malloc(strlen(subpath) + strlen(entry->d_name) + 2);
-	sprintf(filename, "%s/%s", subpath, entry->d_name);
-
-	if (stat(filename, &buf)) {
-	    perror("stat failed");
-	    free(filename);
-	    continue;
-	}
-
-	if (S_ISREG(buf.st_mode) &&
-	    (buf.st_mode & (S_IXUSR | S_IXGRP | S_IXOTH))) {
-
-	    fprintf(stderr, "dssi_example_host: trying to execute GUI at \"%s\"\n",
-		    filename);
-
-	    if (fork() == 0) {
-		execlp(filename, filename, oscUrl, dllName, label, instanceTag, 0);
-		perror("exec failed");
-		exit(1);
-	    }
-
-	    free(filename);
+	if (!(subdir = opendir(subpath))) {
+	    fprintf(stderr, "dssi_example_host: can't open plugin GUI directory \"%s\"\n", subpath);
 	    free(subpath);
+	    free(dllBase);
 	    return;
 	}
 
-	free(filename);
+	while ((entry = readdir(subdir))) {
+	    
+	    if (entry->d_name[0] == '.') continue;
+	    if (!strchr(entry->d_name, '_')) continue;
+
+	    if (fuzzy) {
+		fprintf(stderr, "checking %s against %s\n", entry->d_name, dllBase);
+		if (strncmp(entry->d_name, dllBase, strlen(dllBase))) continue;
+	    } else {
+		fprintf(stderr, "checking %s against %s\n", entry->d_name, label);
+		if (strncmp(entry->d_name, label, strlen(label))) continue;
+	    }
+	    
+	    filename = (char *)malloc(strlen(subpath) + strlen(entry->d_name) + 2);
+	    sprintf(filename, "%s/%s", subpath, entry->d_name);
+	    
+	    if (stat(filename, &buf)) {
+		perror("stat failed");
+		free(filename);
+		continue;
+	    }
+	    
+	    if ((S_ISREG(buf.st_mode) || S_ISLNK(buf.st_mode)) &&
+		(buf.st_mode & (S_IXUSR | S_IXGRP | S_IXOTH))) {
+		
+		fprintf(stderr, "dssi_example_host: trying to execute GUI at \"%s\"\n",
+			filename);
+		
+		if (fork() == 0) {
+		    execlp(filename, filename, oscUrl, dllName, label, instanceTag, 0);
+		    perror("exec failed");
+		    exit(1);
+		}
+		
+		free(filename);
+		free(subpath);
+		free(dllBase);
+		return;
+	    }
+	    
+	    free(filename);
+	}
     }	
 
     fprintf(stderr, "dssi_example_host: no GUI found for plugin \"%s\" in \"%s/\"\n",
 	    label, subpath);
     free(subpath);
+    free(dllBase);
 }
 
 void
@@ -1003,7 +1018,10 @@ main(int argc, char **argv)
 
     MB_MESSAGE("Ready\n");
 
-    while (1) {
+    exiting = 0;
+
+    while (!exiting) {
+
 #if !(defined(__MACH__) && defined(__APPLE__))
 	if (poll(pfd, npfd, 100) > 0) {
 	    midi_callback();
@@ -1038,6 +1056,23 @@ main(int argc, char **argv)
 	    }
 	}
     }
+
+    while (i < instance_count) {
+        if (instances[i].plugin->descriptor->LADSPA_Plugin &&
+	    instances[i].plugin->descriptor->LADSPA_Plugin->deactivate) {
+            instances[i].plugin->descriptor->LADSPA_Plugin->deactivate
+		(instanceHandles + i);
+	}
+        if (instances[i].plugin->descriptor->LADSPA_Plugin &&
+	    instances[i].plugin->descriptor->LADSPA_Plugin->cleanup) {
+            instances[i].plugin->descriptor->LADSPA_Plugin->cleanup
+		(instanceHandles + i);
+	}
+	++i;
+    }
+
+    jack_client_close(jackClient);
+    kill(0, SIGHUP);
 
     return 0;
 }

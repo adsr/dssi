@@ -359,18 +359,39 @@ and query it directly.
 
 2. Discovery and Startup
 
-The mechanism by which a host locates and invokes the UI for a plugin
-is host-dependent.
+The mechanism by which a host locates and starts the UI for a plugin
+is host-dependent, and this section is only a recommendation.
 
-Our recommendation is this: for a plugin labelled PLUGIN found in a
-dll named PLUGINS.so in directory DIRECTORY, the host may look in the
-directory DIRECTORY/PLUGINS/ for executable files beginning with the
-string PLUGIN.  (If there are several, the expectation is that the
-suffix will somehow determine the host's preference -- for example,
-PLUGIN_qt, PLUGIN_gl -- a convention for this ought to be determined.)
+For a typical graphical host, trying to start a GUI for a plugin
+labelled PLUGIN found in a dll named MYPLUGINS.so in directory
+DIRECTORY, we would recommend as follows.
 
-The host then starts the chosen executable with a command line
-consisting of:
+The host looks for a directory DIRECTORY/PLUGINS/.  If found, it looks
+for executable files or symbolic links in that directory beginning
+with the string PLUGIN or MYPLUGINS and ending with a suffix separated
+by an underscore, e.g. PLUGIN_gui, MYPLUGINS_qt.  If nothing so named
+is found, it should conclude that there is no suitable UI for this
+plugin (i.e. files with no underscores in their names should not be
+used -- this permits the plugin UI author to include supporting or
+config files in the same directory).  Otherwise, the host should
+select from among the results according to suffix: for a Qt
+application prefer things ending in _qt, for GTK prefer _gtk, etc; as
+another example, the Rosegarden sequencer will prefer files ending in
+_rg to anything else, as it assumes such a file is probably a link to
+the packager's preferred matching GUI.  If both PLUGIN_suffix and
+MYPLUGINS_suffix are found for the same suffix, the host should use
+the more specific PLUGIN_suffix.
+
+Thus, for a plugin UI author: if creating a graphical UI for a plugin
+labelled PLUGIN in dll MYPLUGINS.so, we recommend creating a single
+executable called PLUGIN_gui (or PLUGIN_gtk, PLUGIN_qt, PLUGIN_fltk
+depending on toolkit, if so inclined) and installing it to a
+subdirectory called MYPLUGINS of the directory containing
+MYPLUGINS.so.
+
+Once the host has found a suitable executable, it then starts it with
+a command line consisting of:
+
   * the executable name in argv[0] as normal
   * the OSC URL for the host, identifying the host and the base path
     for the correct plugin instance (see Paths and Methods below)
