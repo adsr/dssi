@@ -18,9 +18,10 @@ want to make it a DSSI plugin.
 
  * Flexibility
 
-   DSSI plugins can accept MIDI and audio input and can have any
-   number of controls and audio outputs, and you can implement your
-   own user interface using any GUI toolkit.
+   DSSI plugins can accept MIDI and audio input, can have any number
+   of controls and audio outputs, can support unlimited string-based
+   configuration values as well as the numeric control ports, and can
+   provide their own user interface using any GUI toolkit.
 
    Using DSSI does not limit your synth to being used as a plugin in
    sequencers that support DSSI, because the DSSI distribution also
