@@ -1,26 +1,25 @@
 
 
-Request for comments: Disposable Soft Synth Interface (DSSI)
-============================================================
+DSSI
+====
 
-version 0.4
------------
+Version 0.9.
+
 
 Summary
 -------
 
-Disposable Soft Synth Interface (DSSI, pronounced "dizzy") is a
-proposal for a plugin API for software instruments (soft synths) with
-user interfaces, permitting them to be hosted in-process by audio
-applications.  Think of it as LADSPA-for-instruments, or something
-comparable to a simpler version of VSTi.
+DSSI (pronounced "dizzy") is a proposal for a plugin API for software
+instruments (soft synths) with user interfaces, permitting them to be
+hosted in-process by audio applications.  DSSI can be thought of as
+LADSPA-for-instruments, or something comparable to VSTi.
 
 The proposal consists of this RFC, which describes the background and
 defines part of the proposed standard, plus a documented header file
 (dssi.h) which defines the remainder.  The distribution also contains
-a handful of public-domain example files including an almost complete
-(but not pretty) host implementation and a simple synth plugin with a
-GUI.  The API itself is licensed under the LGPL.
+a handful of example files including a complete host implementation
+and a small number of synth plugins.  The API itself is licensed under
+the LGPL.
 
 This proposal was constructed by Steve Harris (steve <at> plugin <dot>
 org <dot> uk), Chris Cannam (cannam@all-day-breakfast.com), and Sean
@@ -41,26 +40,26 @@ This is an awkward situation, because it is hoped that the forthcoming
 GMPI initiative will comprehensively address the needs of soft synths
 in a flexible cross-platform way.  But the requirement for Linux
 applications to be able to support simple hosted synths is here now,
-and GMPI is not.  Thus, we need to provide the simplest possible
-interim solution in a way that will prove compelling enough to support
-now, yet not so compelling as to supplant GMPI or any other
-comprehensive future proposal.  Hence this RFC: the Disposable Soft
-Synth Interface, or DSSI.
+and GMPI is not.  Thus, we need to provide a simple interim solution
+in a way that will prove compelling enough and easy enough to support
+now, yet not so universal as to supplant GMPI or any other
+comprehensive future proposal.  Hence this RFC.
 
 Because of the conservative nature of this proposal, the main
 requirements are:
 
-1/ To support the basic facilities that users and developers familiar
-with mainstream software on other platforms will expect to find in a
-Linux alternative: the ability to take a synth plugin with a cute GUI
-and to direct MIDI (from e.g. a sequencer track) to it, automate its
-controls, and route the output appropriately.  Note that there is an
-emphasis on MIDI throughout this discussion.
+ 1. To support the basic facilities that users and developers familiar
+ with mainstream software on other platforms will expect to find in a
+ Linux alternative: the ability to take a synth plugin with a cute GUI
+ and to direct MIDI (from e.g. a sequencer track) to it, automate its
+ controls, and route the output appropriately.  Note that there is an
+ emphasis on MIDI throughout this discussion.
 
-2/ To address certain specific limitations of other methods of running
-MIDI soft synths on Linux.  These limitations are discussed below.
+ 2. To address certain specific limitations of other methods of
+ running MIDI soft synths on Linux.  These limitations are discussed
+ below.
 
-3/ To take advantage of existing work as much as possible.
+ 3. To take advantage of existing work as much as possible.
 
 
 Existing Techniques
@@ -70,121 +69,129 @@ There are of course ways to run MIDI soft synths on Linux already, as
 well as some other initiatives that address parts of the same problem
 as this one.
 
-* ALSA sequencer input + JACK output (the "standalone soft synth")
+ * ALSA sequencer input + JACK output (the "standalone soft synth")
 
-Most existing Linux soft synths operate as standalone applications
-that wait for MIDI events on an ALSA sequencer port and generate audio
-to JACK outputs.  This is an attractively flexible solution, because
-such applications are by definition routeable in the same way as any
-other MIDI devices and JACK clients.  For some synths, particularly
-larger ones with significant amounts of internal configuration state,
-this may actually be a very effective way to work.
+   Most existing Linux soft synths operate as standalone applications
+   that wait for MIDI events on an ALSA sequencer port and generate
+   audio to JACK outputs.  This is an attractively flexible solution,
+   because such applications are by definition routeable in the same
+   way as any other MIDI devices and JACK clients.  For some synths,
+   particularly larger ones with significant amounts of internal
+   configuration state, this may actually be a very effective way to
+   work.
 
-Unfortunately routing only the MIDI and audio streams is not usually
-enough, especially for smaller dedicated synths.  The applications
-wanting to route to a synth need more information about it than is
-actually available in this way.  For example, it is impossible to
-identify that an ALSA application is in fact a synth, or discover its
-available programs or controller settings; there is no reliable way to
-associate the synth's inputs with its outputs in order to route both
-ends at once; and it is extremely hard to manage multiple instances.
-Also the use of the ALSA sequencer layer to deliver incoming events
-means that they can't be timed to exact sample frames.  All of these
-are limitations which the present proposal needs to address.
+   Unfortunately routing only the MIDI and audio streams is not
+   usually enough, especially for smaller dedicated synths.  The
+   applications wanting to route to a synth need more information
+   about it than is actually available in this way.  For example, it
+   is impossible to identify that an ALSA application is in fact a
+   synth, or discover its available programs or controller settings;
+   there is no reliable way to associate the synth's inputs with its
+   outputs in order to route both ends at once; and it is extremely
+   hard to manage multiple instances.  Also the use of the ALSA
+   sequencer layer to deliver incoming events means that they can't be
+   timed to exact sample frames.  All of these are limitations which
+   the present proposal needs to address.
 
-* LADSPA
+ * LADSPA
 
-The existing Linux plugin standard can't easily be used for MIDI soft
-synths, because there is no way to pass MIDI or MIDI-like data to a
-plugin.  (A plugin could open its own ALSA sequencer input, but that
-is complex and carries the same timing limitation as discussed above.)
-There is also no toolkit-agnostic standard way to provide a user
-interface with a LADSPA plugin.
+   The existing Linux plugin standard can't easily be used for MIDI
+   soft synths, because there is no way to pass MIDI or MIDI-like data
+   to a plugin.  (A plugin could open its own ALSA sequencer input,
+   but that is complex and carries the same timing limitation as
+   discussed above.)  There is also no toolkit-agnostic standard way
+   to provide a user interface with a LADSPA plugin.
 
-* MIDI-over-JACK
+ * MIDI-over-JACK
 
-An extension has been proposed to the JACK framework to permit MIDI
-events to be sent via JACK.  If used to drive a conventional soft
-synth, this would fully address the timing problem that exists in the
-ALSA sequencer method, but not any of its other limitations.
+   An extension has been proposed to the JACK framework to permit MIDI
+   events to be sent via JACK.  If used to drive a conventional soft
+   synth, this would fully address the timing problem that exists in
+   the ALSA sequencer method, but not any of its other limitations.
 
-* LASH (formerly LADCCA)
+ * LASH (formerly LADCCA)
 
-The LASH Audio Session Handler, formerly known as Linux Audio
-Developers' Connection and Configuration API, is a service that
-performs session management for projects using audio applications: it
-starts the applications corresponding to a given project, connects
-their MIDI and audio connections, coordinates saving of project data,
-and so on.  (The applications have to be written to use the LASH
-service.)  This could be used to address some of the problems in the
-ALSA sequencer method, specifically those related to managing
-connections for instances that have already been positioned in a
-connection graph.  LASH could be used with MIDI-over-JACK, thus also
-solving the timing problem.  Unfortunately none of this addresses the
-problem of discovering synths and the available configurations of
-those synths in the first place.
+   The LASH Audio Session Handler, formerly known as Linux Audio
+   Developers' Connection and Configuration API, is a service that
+   performs session management for projects using audio applications:
+   it starts the applications corresponding to a given project,
+   connects their MIDI and audio connections, coordinates saving of
+   project data, and so on.  (The applications have to be written to
+   use the LASH service.)  This could be used to address some of the
+   problems in the ALSA sequencer method, specifically those related
+   to managing connections for instances that have already been
+   positioned in a connection graph.  LASH could be used with
+   MIDI-over-JACK, thus also solving the timing problem.
+   Unfortunately none of this addresses the problem of discovering
+   synths and the available configurations of those synths in the
+   first place.
 
-* M.E.S.S.
+ * M.E.S.S.
 
-The MusE sequencer has an API for hosting soft synths, known as
-M.E.S.S.  It is probably the closest alternative to the present
-proposal, it addresses many of the same problems, it is working now,
-and it is an attractively small API.  Unfortunately it is unlikely to
-be popular as a standard for Linux audio plugins, simply because it is
-in C++ and requires Qt for plugin GUIs.
+   The MusE sequencer has an API for hosting soft synths, known as
+   M.E.S.S.  It is probably the closest alternative to the present
+   proposal, it addresses many of the same problems, it is working
+   now, and it is an attractively small API.  Unfortunately it is
+   unlikely to be popular as a standard for Linux audio plugins,
+   because it is in C++, is designed specifically to match a single
+   host, and is undocumented and changeable.
 
-* VSTi
+ * VSTi
 
-Mentioned for completeness.  The licensing for the VST SDK is not at
-all compatible with the GPL or any other free-software license, which
-is one reason why LADSPA exists.  Also VSTi is complex to implement
-correctly, hard to automate, and in the context of a Linux GUI toolkit
-it would not readily solve the GUI problem.  The attractiveness of the
-fact that there are many plugins already available is diminished by
-the fact that their source is usually not, so they can't be rebuilt
-for Linux except by their authors.
+   Mentioned for completeness.  The licensing for the VST SDK is not
+   at all compatible with the GPL or any other free-software license,
+   which is one reason why LADSPA exists.  Also VSTi is complex to
+   implement correctly, hard to automate, and in the context of a
+   Linux GUI toolkit it would not readily solve the GUI problem.  The
+   attractiveness of the fact that there are many plugins already
+   available is diminished by the fact that their source is usually
+   not, so they can't be rebuilt for Linux except by their authors.
 
 
 The DSSI Proposal In Brief
 --------------------------
 
-* Define a DSSI plugin as a wrapper for a LADSPA plugin, which is to
-  be used for all control and audio data.  (Thus taking advantage of
-  the existing widespread awareness of how LADSPA works, as well as
-  functioning mechanisms for handling controls, instantiation etc.)
+ * A DSSI plugin is a wrapper for a LADSPA plugin.  The LADSPA plugin
+   is used for all control and audio data.  (Thus taking advantage of
+   the existing widespread awareness of how LADSPA works, as well as
+   functioning mechanisms for handling controls, instantiation etc.)
 
-* Provide additional mechanisms for querying and changing programs,
-  mapping MIDI controllers to LADSPA control ports, and running a
-  synth with a set of frame-timestamped MIDI events using the existing
-  ALSA sequencer event type struct.  (Thus ensuring timing correctness
-  and enabling the host to query the various additional bits of
-  non-MIDI non-audio information it needs.)
+ * DSSI provides mechanisms for querying and changing programs,
+   mapping MIDI controllers to LADSPA control ports, and running a
+   synth with a set of frame-timestamped MIDI events using the
+   existing ALSA sequencer event type struct.  (Thus ensuring timing
+   correctness and enabling the host to query the various additional
+   bits of non-MIDI non-audio information it needs.)
 
-* Provide for synchronization and resource sharing between multiple
-  instantiations of a single plugin.  (Thus allowing for such things
-  as complex voice allocation/stealing algorithms and the sharing of
-  large wavetables between what would otherwise be independent
-  single-channel plugin instances.)
+ * DSSI provides for synchronization and resource sharing between multiple
+   instantiations of a single plugin.  (Thus allowing for such things
+   as complex voice allocation/stealing algorithms and the sharing of
+   large wavetables between what would otherwise be independent
+   single-channel plugin instances.)
 
 The above three parts of the proposal are documented thoroughly in the
 dssi.h header file.
 
-* Define in which contexts a DSSI host may call the DSSI and LADSPA
-  API functions, so that proper multi-threaded and multi-processor
-  implementations may be developed with a minimum of overhead.
+ * DSSI defines in which contexts a host may call the DSSI and LADSPA
+   API functions, so that proper multi-threaded and multi-processor
+   implementations may be developed with a minimum of overhead.
 
-This part of the proposal is documented in the 'DSSI Multi-thread /
-Multi-process Considerations' section below.
+   This part of the proposal is documented in the 'DSSI Multi-thread /
+   Multi-process Considerations' section below.
 
-* Make the plugin UI a separate standalone program, that communicates
-  with the host (_not_ directly with the plugin) via Open Sound Control
-  messages.  (Thus ducking out of the GUI toolkit compatibility
-  question altogether, ensuring that the plugin is always correctly
-  automatable by the host, and in principle permitting plugins to be
-  controlled by other OSC clients as well.)
+ * A DSSI plugin UI is a separate standalone program, that communicates
+   with the host (_not_ directly with the plugin) via Open Sound
+   Control messages.  (Thus ducking out of the GUI toolkit
+   compatibility question altogether, ensuring that the plugin is
+   always correctly automatable by the host, and in principle
+   permitting plugins to be controlled by other OSC clients as well.)
 
-This part of the proposal is documented in the 'DSSI Synth UIs'
-section below.
+   This part of the proposal is documented in the 'DSSI Synth UIs'
+   section below.
+
+   N.B. An attractive side-effect of DSSI's basis in LADSPA is that
+   the DSSI UI mechanism can also be used to create custom UIs for
+   LADSPA plugins.
 
 
 DSSI Multi-thread / Multi-process Considerations
@@ -209,70 +216,69 @@ classes of functions are in use.
 
 The three classes of function are:
 
-1. Instantiation class:
+Instantiation class
+~~~~~~~~~~~~~~~~~~~
+This class contains functions that instantiate and set up plugins
+before they are run, and that clean up and disinstantiate when they
+are no longer to be used.  They are:
 
-   This class contains functions that instantiate and set up plugins
-   before they are run, and that clean up and disinstantiate when they
-   are no longer to be used.  They are:
+   -- activate()
+   -- cleanup()
+   -- connect_port()
+   -- deactivate()
+   -- instantiate()
 
-        activate()
-        cleanup()
-        connect_port()
-        deactivate()
-        instantiate()
+Control class
+~~~~~~~~~~~~~
+This class contains functions that control the behaviour of an
+active or running plugin, or return information about a plugin's
+state, yet (for real-time plugins) are not expected to run in
+real time. They are:
 
-2. Control class:
+   -- configure()
+   -- get_midi_controller_for_port()
+   -- get_program()
 
-   This class contains functions that control the behaviour of an
-   active or running plugin, or return information about a plugin's
-   state, yet (for real-time plugins) are not expected to run in
-   real time. They are:
-
-        configure()
-        get_midi_controller_for_port()
-        get_program()
-
-3. Audio class:
-
-   The remaining functions belong to the audio class:
-
-        run()
-        run_adding()
-        run_synth()
-        run_synth_adding()
-        run_multiple_synths()
-        run_multiple_synths_adding()
-        select_program()
-        set_run_adding_gain()
+Audio class
+~~~~~~~~~~~
+The remaining functions belong to the audio class:
+ 
+   -- run()
+   -- run_adding()
+   -- run_synth()
+   -- run_synth_adding()
+   -- run_multiple_synths()
+   -- run_multiple_synths_adding()
+   -- select_program()
+   -- set_run_adding_gain()
 
 It is not the intent of these class divisions to associate the
-functions with particular host threads -- that is, while some hosts
+functions with particular host threads.  That is, while some hosts
 may call control class functions from a 'control' thread, and audio
 class functions from an 'audio' thread, nothing in these rules
 requires that.  As long as the restrictions on simultaneous
 execution of the functions are met, host applications may be
 structured in any way that makes sense.
 
-
-Rules for Hosts:
-
+Rules for Hosts
+~~~~~~~~~~~~~~~
 The restrictions that a DSSI host must observe within each instance
 group are:
 
-1. While one function of a particular class is being executed,
-   the host may not call any other functions of that class.  Thus
-   (for example), an instance group of plugins can assume that
-   get_program() will not be called for any instance while a
-   configure() call is still executing, and that select_program()
-   will not be called for any instance while any of the run*()
-   functions are executing,
+ 1. While one function of a particular class is being executed,
+    the host may not call any other functions of that class.  Thus
+    (for example), an instance group of plugins can assume that
+    get_program() will not be called for any instance while a
+    configure() call is still executing, and that select_program()
+    will not be called for any instance while any of the run*()
+    functions are executing,
 
-2. While a function of the instantiation class is being run, the
-   host may not call any functions of the other two classes, and
-   vice versa. Thus, a plugin is assured that e.g. connect_port() or
-   deactivate() will not be called for any instance in the instance
-   group until all previous control and audio function invocations
-   for the instance group have finished.
+ 2. While a function of the instantiation class is being run, the
+    host may not call any functions of the other two classes, and
+    vice versa. Thus, a plugin is assured that e.g. connect_port() or
+    deactivate() will not be called for any instance in the instance
+    group until all previous control and audio function invocations
+    for the instance group have finished.
 
 These restrictions apply to each 'instance group' within a running
 DSSI system.  When a host is using run_multiple_synths() with a
@@ -290,9 +296,8 @@ of one particular plugin within the library (that is, all instances
 with the same label and *.so file). It does NOT refer to all
 instances drawn from the same *.so file.
 
-
-Rules for Plugins:
-
+Rules for Plugins
+~~~~~~~~~~~~~~~~~
 Because it is permissible for a host to simultaneously call one
 control class function and one audio class function (per instance
 group), it is the responsibility of the plugin to ensure that its
@@ -323,12 +328,12 @@ plugin or a separate shared object.  A host may elect to start or stop
 the UI for a plugin at any time, starting and terminating the
 executable at will.
 
-1. In General
-
+In General
+~~~~~~~~~~
 The UI and host communicate with one another using OSC, the OpenSound
 Control protocol.  See
 
-  http://www.cnmat.berkeley.edu/OpenSoundControl/
+  <URL:http://www.cnmat.berkeley.edu/OpenSoundControl/>
 
 OSC is a simple message-based protocol intended for communications
 among sound devices.  DSSI does not mandate any particular
@@ -337,7 +342,7 @@ transport (OSC itself is transport-independent).  The example code
 uses an implementation by Steve Harris called liblo ("Lite OSC") which
 can be obtained from
 
-  http://www.plugin.org.uk/liblo/
+  <URL:http://www.plugin.org.uk/liblo/>
 
 Note that liblo is distributed under a different licence from DSSI and
 so might not be a legal option for certain DSSI implementations.
@@ -357,8 +362,8 @@ that the UI will either share some code with the plugin so that it
 knows these things already, or will itself also load the plugin DLL
 and query it directly.
 
-2. Discovery and Startup
-
+Discovery and Startup
+~~~~~~~~~~~~~~~~~~~~~
 The mechanism by which a host locates and starts the UI for a plugin
 is host-dependent, and this section is only a recommendation.
 
@@ -393,14 +398,18 @@ Once the host has found a suitable executable, it then starts it with
 a command line consisting of:
 
   * the executable name in argv[0] as normal
+
   * the OSC URL for the host, identifying the host and the base path
     for the correct plugin instance (see Paths and Methods below)
+
   * the name of the .so in which the plugin was found (here PLUGINS.so)
+
   * the label of the plugin (here PLUGIN).
+
   * a "user friendly" identifier which the UI may display to allow a
-      user to easily associate this particular UI instance with the
-      correct plugin instance as it is represented by the host (e.g.
-      "track 1" or "channel 4").
+    user to easily associate this particular UI instance with the
+    correct plugin instance as it is represented by the host (e.g.
+    "track 1" or "channel 4").
 
 If the UI supports the show/hide mechanism (which any graphical UI
 should), then it should initially be in hidden state.  The UI then
@@ -409,8 +418,8 @@ the host responds by sending the current configure, program and
 control values (in that order).  The host must then call show() on the
 UI and startup is complete.
 
-3. Paths and Methods
-
+Paths and Methods
+~~~~~~~~~~~~~~~~~
 An OSC method call consists of a path -- identifying the method being
 called -- and a sequence of typed arguments. 
 
@@ -428,80 +437,92 @@ update call.
 
 These are the methods the host may support:
 
-  <base path>/control  (e.g. "/dssi/PLUGINS/PLUGIN.1/control")
-  Set a control port value on the plugin at <base path>.  Takes an int
-  argument for port number and a float for value.  (required method)
+ * <base path>/control  (e.g. "/dssi/PLUGINS/PLUGIN.1/control")
 
-  <base path>/program
-  Make a program change on the plugin.  Takes two int arguments, for
-  bank and program number.  (required method)
+   Set a control port value on the plugin at <base path>.  Takes an int
+   argument for port number and a float for value.  (required method)
 
-  <base path>/update
-  Request an update on the UI.  Takes one string argument, the UI's
-  own OSC URL with base path.  The host should respond by sending the
-  current state of the plugin to the UI in a series of configure,
-  program, and control OSC calls.  (required method, and the UI is
-  required to use it)
+ * <base path>/program
 
-  <base path>/configure
-  Make a configure() call to the plugin.  Takes two string arguments
-  for key and value.  If the key begins with the special prefix
-  GLOBAL:, the same configure call will be made on all plugins in
-  the same instance group, as well as their UIs.  See also the
-  documentation for configure() in dssi.h. (required method)
+   Make a program change on the plugin.  Takes two int arguments, for
+   bank and program number.  (required method)
 
-  <base path>/midi
-  Send an arbitrary MIDI event to the plugin.  Takes a four-byte MIDI
-  string.  This is expected to be used for note data generated from a
-  test panel on the UI, for example.  It should not be used for
-  program or controller changes, sysex data, etc.  A host should
-  feel free to drop any values it doesn't wish to pass on.  No
-  guarantees are provided about timing accuracy, etc, of the MIDI
-  communication.  (optional method)
+ * <base path>/update
 
-  <base path>/exiting
-  Notifies the host that the UI is in the process of exiting, for
-  example if the user closed the GUI window using the window manager.
-  The UI should not send this if exiting in response to a quit message
-  (see below).  No arguments.  (required method)
+   Request an update on the UI.  Takes one string argument, the UI's
+   own OSC URL with base path.  The host should respond by sending the
+   current state of the plugin to the UI in a series of configure,
+   program, and control OSC calls.  (required method, and the UI is
+   required to use it)
+
+ * <base path>/configure
+
+   Make a configure() call to the plugin.  Takes two string arguments
+   for key and value.  If the key begins with the special prefix
+   GLOBAL:, the same configure call will be made on all plugins in the
+   same instance group, as well as their UIs.  See also the
+   documentation for configure() in dssi.h. (required method)
+
+ * <base path>/midi
+
+   Send an arbitrary MIDI event to the plugin.  Takes a four-byte MIDI
+   string.  This is expected to be used for note data generated from a
+   test panel on the UI, for example.  It should not be used for
+   program or controller changes, sysex data, etc.  A host should feel
+   free to drop any values it doesn't wish to pass on.  No guarantees
+   are provided about timing accuracy, etc, of the MIDI communication.
+   (optional method)
+
+ * <base path>/exiting
+
+   Notifies the host that the UI is in the process of exiting, for
+   example if the user closed the GUI window using the window manager.
+   The UI should not send this if exiting in response to a quit
+   message (see below).  No arguments.  (required method)
 
 And these are the methods the UI may support:
 
-  <base path>/control
-  Update the UI from an automated input control port change, or
-  from an observed change to an output control port.  Takes an int
-  argument for port number and float for value.  (required method)
+ * <base path>/control
 
-  <base path>/program
-  Update the UI from an automated program change.  Takes an int
-  argument for bank number and int for value.  (required method if
-  the plugin supports program changes)
+   Update the UI from an automated input control port change, or from
+   an observed change to an output control port.  Takes an int
+   argument for port number and float for value.  (required method)
 
-  <base path>/configure
-  Used to notify a UI of the current configure state of the plugin.
-  If the host has set any configure data on the plugin at startup
-  (as remembered from a previous invocation), it will call this
-  function once for each piece of configuration data following the
-  UI's update() request, e.g. on startup.  Takes two string arguments
-  for key and value.  (required method)
+ * <base path>/program
 
-  <base path>/show
-  Show the UI, if it's a graphical interface in a window or some
-  other type that it makes sense to show or hide.  If the UI is
-  already visible, bring it to the front if possible.  No arguments.
-  (optional method for UIs in general, but it would be bad form
-  to implement a graphical UI without it)
+   Update the UI from an automated program change.  Takes an int
+   argument for bank number and int for value.  (required method if
+   the plugin supports program changes)
 
-  <base path>/hide
-  Hide the UI, if it's a graphical interface in a window or some
-  other type that it makes sense to show or hide.  No arguments.
-  (optional method for UIs in general, but it would be bad form
-  to implement a graphical UI without it)
+ * <base path>/configure
 
-  <base path>/quit
-  Exit the UI.  The UI should not send any more communication to
-  the host about this plugin after receiving a quit message.
-  It may save any of its own state before exiting, but it should
-  not retain state that may be necessary for the host to restore
-  the plugin instance correctly.  (required method)
+   Used to notify a UI of the current configure state of the plugin.
+   If the host has set any configure data on the plugin at startup (as
+   remembered from a previous invocation), it will call this function
+   once for each piece of configuration data following the UI's
+   update() request, e.g. on startup.  Takes two string arguments for
+   key and value.  (required method)
+
+ * <base path>/show
+
+   Show the UI, if it's a graphical interface in a window or some
+   other type that it makes sense to show or hide.  If the UI is
+   already visible, bring it to the front if possible.  No arguments.
+   (optional method for UIs in general, but it would be bad form to
+   implement a graphical UI without it)
+
+ * <base path>/hide
+
+   Hide the UI, if it's a graphical interface in a window or some
+   other type that it makes sense to show or hide.  No arguments.
+   (optional method for UIs in general, but it would be bad form to
+   implement a graphical UI without it)
+
+ * <base path>/quit
+
+   Exit the UI.  The UI should not send any more communication to the
+   host about this plugin after receiving a quit message.  It may save
+   any of its own state before exiting, but it should not retain state
+   that may be necessary for the host to restore the plugin instance
+   correctly.  (required method)
 

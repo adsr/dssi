@@ -2,7 +2,7 @@
 
 /* dssi.h
 
-   Disposable Soft Synth Interface version 0.4
+   DSSI version 0.9
    Copyright (c) 2004 Chris Cannam, Steve Harris and Sean Bolton
    
    This library is free software; you can redistribute it and/or
@@ -27,9 +27,9 @@
 #include <ladspa.h>
 #include <alsa/seq_event.h>
 
-#define DSSI_VERSION "0.4"
+#define DSSI_VERSION "0.9"
 #define DSSI_VERSION_MAJOR 0
-#define DSSI_VERSION_MINOR 4
+#define DSSI_VERSION_MINOR 9
 
 #ifdef __cplusplus
 extern "C" {

@@ -6,7 +6,7 @@ FLUID ?= $(PWD)/../fluidsynth-1.0.3
 
 export PREFIX FLUID
 
-all:
+all:	doc/RFC.html
 	@$(MAKE) -C jack-dssi-host
 	@$(MAKE) -C examples
 	@$(MAKE) -C tests
@@ -34,3 +34,5 @@ install: all
 	@$(MAKE) -C examples install
 	@test -d $(FLUID)/src && $(MAKE) -C fluidsynth-dssi install || echo "Not installing fluidsynth-dssi"
 
+doc/RFC.html:	doc/RFC.txt
+	perl ./scripts/txt2html.pl $< | perl ./scripts/tableofcontents.pl > $@
