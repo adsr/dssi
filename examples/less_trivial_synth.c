@@ -396,7 +396,7 @@ void _init()
     LADSPA_PortDescriptor *port_descriptors;
     LADSPA_PortRangeHint *port_range_hints;
 
-    mb_init("LTS: ");
+/*    mb_init("LTS: "); */
 
     sin_table = malloc(sizeof(float) * TABLE_SIZE);
     for (i=0; i<TABLE_SIZE; i++) {
