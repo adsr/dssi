@@ -176,6 +176,7 @@ main(int argc, char **argv)
     char *dllName;
     char *label = 0;
     void *pluginObject = 0;
+    const char **ports;
     int i;
 
     /* Parse args and report usage */
@@ -343,6 +344,23 @@ main(int argc, char **argv)
         fprintf (stderr, "cannot activate jack client");
         exit(1);
     }
+
+    ports = jack_get_ports(jackClient, NULL, NULL,
+                                      JackPortIsPhysical|JackPortIsInput);    
+    for (i = 0; i < outs; ++i) {
+      if (ports) {
+          if (ports[i]) {
+              if (jack_connect(jackClient, jack_port_name(outputPorts[i]),
+                      ports[0])) {
+                    fprintf (stderr, "cannot connect output port %d\n", i);
+              }
+          } else {
+              free(ports);
+              ports = NULL;
+          }
+      }
+    }
+    if (ports) free(ports);
 
     printf("Ready\n");
 
