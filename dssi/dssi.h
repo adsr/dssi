@@ -176,11 +176,16 @@ typedef struct _DSSI_Descriptor {
      * This member is a function pointer that returns the MIDI
      * controller number that should be mapped to the given input
      * control port.  If the given port should not have any MIDI
-     * controller mapped to it, the function should return -1.  The
-     * behaviour of this function is undefined if the given port
+     * controller mapped to it, the function should return DSSI_NONE.
+     * The behaviour of this function is undefined if the given port
      * number does not correspond to an input control port.  A plugin
      * that does not want MIDI controllers mapped to ports at all may
      * set this member NULL.
+     *
+     * Correct values can be got using the macros DSSI_CC(num) and
+     * DSSI_NRPN(num) as appropriate, and values can be combined using
+     * logical or, eg DSSI_CC(23) | DSSI_NRPN(1069) should respond
+     * to CC #23 and NRPN #1069.
      *
      * The host is responsible for doing proper scaling from MIDI
      * controller values to port ranges according to the plugin's
@@ -255,6 +260,25 @@ typedef struct _DSSI_Descriptor {
 const DSSI_Descriptor *dssi_descriptor(unsigned long Index);
   
 typedef const DSSI_Descriptor *(*DSSI_Descriptor_Function)(unsigned long Index);
+
+/*
+ * Macros to specify particular MIDI controlers in return values from
+ * get_midi_controller_for_port()
+ */
+
+#define DSSI_CC_BITS			0x20000000
+#define DSSI_NRPN_BITS			0x40000000
+
+#define DSSI_NONE			-1
+#define DSSI_CONTROLLER_IS_SET(n)	(DSSI_NONE != (n))
+
+#define DSSI_CC(n)			(DSSI_CC_BITS | (n))
+#define DSSI_IS_CC(n)			(DSSI_CC_BITS & (n))
+#define DSSI_CC_NUMBER(n)		((n) & 0x7f)
+
+#define DSSI_NRPN(n)			(DSSI_NRPN_BITS | ((n) << 7))
+#define DSSI_IS_NRPN(n)			(DSSI_NRPN_BITS & (n))
+#define DSSI_NRPN_NUMBER(n)		(((n) >> 7) & 0x3fff)
 
 #ifdef __cplusplus
 }

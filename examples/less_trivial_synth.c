@@ -30,6 +30,8 @@
 
 #define MIDI_NOTES 128
 
+#define GLOBAL_GAIN 0.25f
+
 static LADSPA_Descriptor *ltsLDescriptor = NULL;
 static DSSI_Descriptor *ltsDDescriptor = NULL;
 
@@ -206,16 +208,17 @@ static void runLTS(LADSPA_Handle instance, unsigned long sample_count,
 		snd_seq_ev_note_t n = events[event_pos].data.note;
 
 		if (n.velocity > 0) {
-		    data[n.note].amp = n.velocity / 512.0f;
+		    data[n.note].amp = n.velocity * GLOBAL_GAIN / 127.0f;
 		    data[n.note].state = attack;
 		    data[n.note].env = 0.0;
-		    data[n.note].env_d = 1.0f / vals.attack;
+		    data[n.note].env_d = GLOBAL_GAIN / vals.attack;
 		    data[n.note].phase = 0.0;
 		    data[n.note].counter = 0;
 		    data[n.note].next_event = vals.attack;
 		} else {
 		    data[n.note].state = release;
-		    data[n.note].env_d = -vals.sustain / vals.release;
+		    data[n.note].env_d = -vals.sustain * data[n.note].amp /
+					 vals.release;
 		    data[n.note].counter = 0;
 		    data[n.note].next_event = vals.release;
 		}
@@ -223,7 +226,8 @@ static void runLTS(LADSPA_Handle instance, unsigned long sample_count,
 		snd_seq_ev_note_t n = events[event_pos].data.note;
 
 		data[n.note].state = release;
-		data[n.note].env_d = -vals.sustain / vals.release;
+		data[n.note].env_d = -vals.sustain * data[n.note].amp /
+				     vals.release;
 		data[n.note].counter = 0;
 		data[n.note].next_event = vals.release;
 	    }
@@ -250,6 +254,7 @@ static void run_voice(LTS *p, synth_vals *vals, int note, note_data *d,
     if (d->phase > M_PI * 2.0) {
 	d->phase -= M_PI * 2.0;
     }
+    d->env += d->env_d;
 
     switch (d->state) {
     case inactive:
