@@ -86,6 +86,7 @@ typedef struct {
     LADSPA_Data decay;
     LADSPA_Data sustain;
     LADSPA_Data release;
+    LADSPA_Data pitch;
 } synth_vals;
 
 typedef struct {
@@ -95,6 +96,7 @@ typedef struct {
     LADSPA_Data *decay;
     LADSPA_Data *sustain;
     LADSPA_Data *release;
+    LADSPA_Data pitch;
     voice_data data[POLYPHONY];
     int note2voice[MIDI_NOTES];
     fixp omega[MIDI_NOTES];
@@ -190,6 +192,7 @@ static void activateLTS(LADSPA_Handle instance)
     for (i=0; i<MIDI_NOTES; i++) {
 	plugin_data->note2voice[i] = 0;
     }
+    plugin_data->pitch = 1.0f;
 }
 
 static void runLTSWrapper(LADSPA_Handle instance,
@@ -216,6 +219,8 @@ static void runLTS(LADSPA_Handle instance, unsigned long sample_count,
     vals.decay = *(plugin_data->decay) * plugin_data->fs;
     vals.sustain = *(plugin_data->sustain) * 0.01f;
     vals.release = *(plugin_data->release) * plugin_data->fs;
+
+    vals.pitch = plugin_data->pitch;
 
     for (pos = 0, event_pos = 0; pos < sample_count; pos += STEP_SIZE) {
 	while (event_pos < event_count
@@ -253,6 +258,11 @@ static void runLTS(LADSPA_Handle instance, unsigned long sample_count,
 		    data[voice].counter = 0;
 		    data[voice].next_event = vals.release;
 		}
+	    } else if (events[event_pos].type == SND_SEQ_EVENT_PITCHBEND) {
+		vals.pitch =
+		    powf(2.0f, (float)(events[event_pos].data.control.value)
+			 * 0.0001220703125f);
+		plugin_data->pitch = vals.pitch;
 	    }
 	    event_pos++;
 	}
@@ -278,7 +288,8 @@ static void run_voice(LTS *p, synth_vals *vals, voice_data *d, LADSPA_Data *out,
     unsigned int i;
 
     for (i=0; i<count; i++) {
-	d->phase.all += lrintf((float)p->omega[d->note].all * vals->tune);
+	d->phase.all += lrintf((float)p->omega[d->note].all * vals->tune *
+				vals->pitch);
 	d->env += d->env_d;
 	out[i] += LERP(FP_FR(d->phase), table[FP_IN(d->phase)],
 		     table[FP_IN(d->phase) + 1]) * d->amp * d->env;
