@@ -342,11 +342,16 @@ startGUI(const char *directory, const char *dllName, const char *label,
 
 	    } else if (child == 0) { // child process
 
-		if (execlp(filename, filename, oscUrl, dllName, label, 0)) {
-		    perror("exec failed");
-		    exit(1);
+		if (fork()) {
+		    exit(0);
+		} else {
+		    if (execlp(filename, filename, oscUrl, dllName, label, 0)) {
+			perror("exec failed");
+			exit(1);
+		    }
 		}
 	    }
+	    wait(child);
 
 	    free(filename);
 	    free(subpath);
