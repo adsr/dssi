@@ -16,8 +16,10 @@
 #include <qpushbutton.h>
 #include <qtimer.h>
 #include <qfiledialog.h>
+#include <qmessagebox.h>
 #include <iostream>
 #include <unistd.h>
+#include <sndfile.h>
 
 #ifdef Q_WS_X11
 #include <X11/Xlib.h>
@@ -60,31 +62,29 @@ SamplerGUI::SamplerGUI(QString host, QString port,
 {
     m_host = lo_address_new(host, port);
 
-    QGridLayout *layout = new QGridLayout(this, 2, 6, 5, 5);
+    QGridLayout *layout = new QGridLayout(this, 4, 3, 5, 5);
 
     layout->addWidget(new QLabel("Sample file:  ", this), 0, 0, Qt::AlignRight);
+    layout->addWidget(new QLabel("Base MIDI pitch:  ", this), 1, 0, Qt::AlignRight);
+    layout->addWidget(new QLabel("Sustain:  ", this), 2, 0, Qt::AlignRight);
 
-    m_sampleFile = new QLabel("<none>", this);
-    layout->addMultiCellWidget(m_sampleFile, 0, 0, 1, 4, Qt::AlignLeft);
+    m_sampleFile = new QLabel("<none loaded>  ", this);
+    layout->addMultiCellWidget(m_sampleFile, 0, 0, 1, 1, Qt::AlignLeft);
 
-    QPushButton *loadButton = new QPushButton("Open ...", this);
-    layout->addWidget(loadButton, 0, 5, Qt::AlignLeft);
+    QPushButton *loadButton = new QPushButton(" ... ", this);
+    layout->addWidget(loadButton, 0, 2);
     connect(loadButton, SIGNAL(pressed()), this, SLOT(fileSelect()));
-
-    layout->addWidget(new QLabel("Base pitch:", this), 1, 1, Qt::AlignRight);
 
     m_basePitch = new QSpinBox(this);
     m_basePitch->setMinValue(0);
     m_basePitch->setMaxValue(120);
     m_basePitch->setValue(60);
-    layout->addWidget(m_basePitch, 1, 2, Qt::AlignLeft);
+    layout->addWidget(m_basePitch, 1, 1, Qt::AlignLeft);
     connect(m_basePitch, SIGNAL(valueChanged(int)), this, SLOT(basePitchChanged(int)));
     
-    layout->addWidget(new QLabel("  ", this), 1, 3, Qt::AlignRight);
-
-    m_sustain = new QCheckBox("Sustain", this);
+    m_sustain = new QCheckBox(this);
     m_sustain->setChecked(false);
-    layout->addWidget(m_sustain, 1, 4, Qt::AlignRight);
+    layout->addWidget(m_sustain, 2, 1, Qt::AlignLeft);
     connect(m_sustain, SIGNAL(toggled(bool)), this, SLOT(sustainChanged(bool)));
     
     // cause some initial updates
@@ -94,7 +94,7 @@ SamplerGUI::SamplerGUI(QString host, QString port,
     QPushButton *testButton = new QPushButton("Test", this);
     connect(testButton, SIGNAL(pressed()), this, SLOT(test_press()));
     connect(testButton, SIGNAL(released()), this, SLOT(test_release()));
-    layout->addWidget(testButton, 1, 5);
+    layout->addWidget(testButton, 2, 2);
 
     QTimer *myTimer = new QTimer(this);
     connect(myTimer, SIGNAL(timeout()), this, SLOT(oscRecv()));
@@ -138,10 +138,27 @@ SamplerGUI::sustainChanged(bool on)
 void
 SamplerGUI::fileSelect()
 {
-    QString path = QFileDialog::getOpenFileName();
+    QString path = QFileDialog::getOpenFileName
+	(".", "Audio files (*.wav *.aiff)", this, "file select",
+	 "Select an audio sample file");
     if (path) {
-	lo_send(m_host, m_configurePath, "ss", "load", path.latin1());
-	m_sampleFile->setText(path);
+
+	SF_INFO info;
+	SNDFILE *file;
+
+	info.format = 0;
+	file = sf_open(path, SFM_READ, &info);
+
+	if (!file) {
+	    QMessageBox::warning
+		(this, "Couldn't load audio file",
+		 QString("Couldn't load audio sample file '%1'").arg(path),
+		 QMessageBox::Ok, 0);
+	} else {
+	    sf_close(file);
+	    lo_send(m_host, m_configurePath, "ss", "load", path.latin1());
+	    m_sampleFile->setText(path);
+	}
     }
 }
 

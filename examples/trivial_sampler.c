@@ -268,14 +268,19 @@ char *samplerLoad(Sampler *plugin_data, const char *path)
     samples = info.frames;
 
     tmpSamples = (float *)malloc(samples * sizeof(float));
-    if (info.channels == 1) {
+    if (info.channels <= 1) {
 	tmpFrames = 0;
 	sf_read_float(file, tmpSamples, samples);
     } else {
 	tmpFrames = (float *)malloc(samples * info.channels * sizeof(float));
 	sf_readf_float(file, tmpFrames, samples);
 	for (i = 0; i < info.frames; ++i) {
-	    tmpSamples[i] = tmpFrames[i * info.channels];
+	    int j;
+	    tmpSamples[i] = 0.0f;
+	    for (j = 0; j < info.channels; ++j) {
+		tmpSamples[i] += tmpFrames[i * info.channels + j];
+	    }
+	    tmpSamples[i] /= info.channels;
 	}
 	free(tmpFrames);
     }
@@ -317,7 +322,7 @@ char *samplerLoad(Sampler *plugin_data, const char *path)
 
     if (tmpFrames) free(tmpFrames);
 
-    printf("loaded %s\n", path);
+    printf("loaded %s (%ld samples merged from %ld channels resampled from %ld frames at %ld Hz)\n", path, (long)samples, (long)info.channels, (long)info.frames, (long)info.samplerate);
 
     return NULL;
 }

@@ -66,7 +66,7 @@ trivial_sampler_qt_gui.moc.cpp:	trivial_sampler_qt_gui.h
 	$(MOC) $< > $@
 
 trivial_sampler_qt_gui: trivial_sampler_qt_gui.o trivial_sampler_qt_gui.moc.o
-	$(CXX) -o $@ $^ $(QTGUI_LDLIBS)
+	$(CXX) -o $@ $^ -lsndfile $(QTGUI_LDLIBS)
 
 trivial_sampler/trivial_sampler_qt: trivial_sampler_qt_gui
 	mkdir -p trivial_sampler
