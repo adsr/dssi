@@ -478,6 +478,8 @@ query_programs(d3h_instance_t *instance)
 
     /* free old lot */
     if (instance->pluginPrograms) {
+        for (i = 0; i < instance->pluginProgramCount; i++)
+            free((void *)instance->pluginPrograms[i].Name);
 	free((char *)instance->pluginPrograms);
 	instance->pluginPrograms = NULL;
 	instance->pluginProgramCount = 0;

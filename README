@@ -26,9 +26,12 @@ You'll find here:
   examples/less_trivial_synth_qt_gui.cpp -- a very simple Qt GUI
   for the above
 
+  fluidsynth-dssi/ -- an example DSSI implementation of FluidSynth,
+  with a GTK+ GUI
 
-Build
------
+
+Requirements
+------------
 
 To build the example code you will need:
 
@@ -37,16 +40,32 @@ To build the example code you will need:
   LADSPA
   liblo-0.5 or above: http://www.plugin.org.uk/liblo/
   pkgconfig with PKG_CONFIG_PATH set appropriately to pick up liblo
+
+To build the less_trivial_synth Qt GUI, you will need:
+
   Qt 3 with QTDIR set appropriately
 
-So long as PKG_CONFIG_PATH and QTDIR are set appropriately, a "make"
-in the examples directory should build everything.
+To build the fluidsynth-dssi plugin and GUI, you will need:
 
+  FluidSynth 1.0.3 (libraries, headers, and source code)
+  GTK+ 1.2.x
+
+Build
+-----
+
+So long as PKG_CONFIG_PATH and QTDIR are set appropriately, a "make"
+and "make install" in the top level directory should install the
+dssi.h header file and dssi.pc pkgconfig file, plus build and
+install everything in the examples directory.
+
+To build FluidSynth-DSSI, you must first edit the Makefile in the
+fluidsynth-dssi directory.  Then "make" and "make install" will
+build and install it.
 
 Test
 ----
 
-Make sure JACK is running, cd to ./examples and run
+Make sure JACK is running, cd to ./examples and run:
 
   $ export DSSI_PATH=`pwd`
   $ ./dssi_example_host less_trivial_synth.so
@@ -66,6 +85,18 @@ procedure installed into examples/less_trivial_synth/LTS_qt,
 instantiated the plugin, started the GUI and is now managing the MIDI
 input from ALSA, control changes from the GUI and audio out to JACK.
 
+You may also run multiple synth instances simultaneously with the
+example host.  If you have built both the examples and
+FluidSynth-DSSI, and installed them to /usr/local, you may run:
+
+  $ export DSSI_PATH=/usr/local/lib/dssi
+  $ export PATH=$PATH:/usr/local/bin     # if it's not there already
+  $ dssi_example_host -2 less_trivial_synth.so -3 fluidsynth-dssi.so
+
+This will create two less_trivial_synth instances and three
+FluidSynth-DSSI instances.  Note that the instances are assigned
+consecutive MIDI channels, and their outputs are spread across all
+of the available JACK physical outputs.
 
 Licensing
 ---------
@@ -76,4 +107,7 @@ Public License.  See COPYING for details.
 Licensing for the files in the examples directory may vary: please
 check the individual files for details.  Most of them are in the
 public domain, which means you can use them for anything you want.
+
+FluidSynth-DSSI is licensed under the GNU General Public License.
+See fluidsynth-dssi/COPYING for details.
 
