@@ -27,6 +27,13 @@ public:
     virtual ~SynthGUI();
 
 public slots:
+    void setTuning (float hz);
+    void setAttack (float sec);
+    void setDecay  (float sec);
+    void setSustain(float percent);
+    void setRelease(float sec);
+
+protected slots:
     void tuningChanged (int);
     void attackChanged (int);
     void decayChanged  (int);
@@ -45,6 +52,8 @@ protected:
     QLabel *m_decayLabel;
     QLabel *m_sustainLabel;
     QLabel *m_releaseLabel;
+
+    bool m_suppressHostUpdate;
 };
 
 

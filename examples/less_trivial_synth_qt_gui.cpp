@@ -15,7 +15,8 @@
 #include <qapplication.h>
 
 SynthGUI::SynthGUI(QWidget *w) :
-    QFrame(w)
+    QFrame(w),
+    m_suppressHostUpdate(true)
 {
     QGridLayout *layout = new QGridLayout(this, 3, 5, 5, 5);
     
@@ -37,11 +38,11 @@ SynthGUI::SynthGUI(QWidget *w) :
     m_sustainLabel = new QLabel(this);
     m_releaseLabel = new QLabel(this);
     
-    layout->addWidget(new QLabel("Tuning A",      this), 0, 0, Qt::AlignCenter);
-    layout->addWidget(new QLabel("Attack time",   this), 0, 1, Qt::AlignCenter);
-    layout->addWidget(new QLabel("Decay time",    this), 0, 2, Qt::AlignCenter);
-    layout->addWidget(new QLabel("Sustain level", this), 0, 3, Qt::AlignCenter);
-    layout->addWidget(new QLabel("Release time",  this), 0, 4, Qt::AlignCenter);
+    layout->addWidget(new QLabel("Pitch of A", this), 0, 0, Qt::AlignCenter);
+    layout->addWidget(new QLabel("Attack",     this), 0, 1, Qt::AlignCenter);
+    layout->addWidget(new QLabel("Decay",      this), 0, 2, Qt::AlignCenter);
+    layout->addWidget(new QLabel("Sustain",    this), 0, 3, Qt::AlignCenter);
+    layout->addWidget(new QLabel("Release",    this), 0, 4, Qt::AlignCenter);
     
     layout->addWidget(m_tuning,  1, 0);
     layout->addWidget(m_attack,  1, 1);
@@ -67,6 +68,48 @@ SynthGUI::SynthGUI(QWidget *w) :
     decayChanged  (m_decay  ->value());
     sustainChanged(m_sustain->value());
     releaseChanged(m_release->value());
+
+    m_suppressHostUpdate = false;
+}
+
+void
+SynthGUI::setTuning(float hz)
+{
+    m_suppressHostUpdate = true;
+    m_tuning->setValue(int((hz - 400.0) / 10.0));
+    m_suppressHostUpdate = false;
+}
+
+void
+SynthGUI::setAttack(float sec)
+{
+    m_suppressHostUpdate = true;
+    m_attack->setValue(int(sec * 100));
+    m_suppressHostUpdate = false;
+}
+
+void
+SynthGUI::setDecay(float sec)
+{
+    m_suppressHostUpdate = true;
+    m_decay->setValue(int(sec * 100));
+    m_suppressHostUpdate = false;
+}
+
+void
+SynthGUI::setSustain(float percent)
+{
+    m_suppressHostUpdate = true;
+    m_sustain->setValue(int(percent));
+    m_suppressHostUpdate = false;
+}
+
+void
+SynthGUI::setRelease(float sec)
+{
+    m_suppressHostUpdate = true;
+    m_release->setValue(int(sec * 100));
+    m_suppressHostUpdate = false;
 }
 
 void
@@ -74,8 +117,10 @@ SynthGUI::tuningChanged(int value)
 {
     float hz = float(value) / 10.0 + 400.0;
     m_tuningLabel->setText(QString("%1 Hz").arg(hz));
-    
-    //!!! send hz to host
+
+    if (!m_suppressHostUpdate) {
+	//!!! send hz to host
+    }
 }
 
 void
@@ -84,7 +129,9 @@ SynthGUI::attackChanged(int value)
     float sec = float(value) / 100.0;
     m_attackLabel->setText(QString("%1 sec").arg(sec));
 
-    //!!! send sec to host
+    if (!m_suppressHostUpdate) {
+	//!!! send sec to host
+    }
 }
 
 void
@@ -93,7 +140,9 @@ SynthGUI::decayChanged(int value)
     float sec = float(value) / 100.0;
     m_decayLabel->setText(QString("%1 sec").arg(sec));
 
-    //!!! send sec to host
+    if (!m_suppressHostUpdate) {
+	//!!! send sec to host
+    }
 }
 
 void
@@ -101,7 +150,9 @@ SynthGUI::sustainChanged(int value)
 {
     m_sustainLabel->setText(QString("%1 %").arg(value));
 
-    //!!! send value (percent) to host
+    if (!m_suppressHostUpdate) {
+	//!!! send value (percent) to host
+    }
 }
 
 void
@@ -110,7 +161,9 @@ SynthGUI::releaseChanged(int value)
     float sec = float(value) / 100.0;
     m_releaseLabel->setText(QString("%1 sec").arg(sec));
 
-    //!!! send sec to host
+    if (!m_suppressHostUpdate) {
+	//!!! send sec to host
+    }
 }
 
 SynthGUI::~SynthGUI()
@@ -126,7 +179,9 @@ main(int argc, char **argv)
     application.setMainWidget(&gui);
     gui.show();
 
-    //!!! now... updates from the host?
+    //!!! now... updates from the host? calling the various setXXX
+    // methods on the gui object when something is received.  (we could
+    // make the gui object static for simplicity here.)
 
     return application.exec();
 }
