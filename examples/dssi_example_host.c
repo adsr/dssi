@@ -51,6 +51,8 @@ static const char osc_path[32];
 
 lo_server_thread serverThread;
 lo_target uiTarget;
+static char *gui_osc_control_path = 0;
+static char *gui_osc_program_path = 0;
 
 static sigset_t _signals;
 
@@ -67,14 +69,18 @@ LADSPA_Data get_port_default(const LADSPA_Descriptor *plugin, int port);
 
 void osc_error(int num, const char *m, const char *path);
 
-int osc_handler(const char *path, const char *types, lo_arg **argv, int argc,
-                 void *data, void *user_data) ;
+int osc_control_handler(const char *path, const char *types, lo_arg **argv, int argc,
+			void *data, void *user_data) ;
 int osc_midi_handler(const char *path, const char *types, lo_arg **argv, int argc,
-                 void *data, void *user_data) ;
-int update_handler(const char *path, const char *types, lo_arg **argv, int
-		    argc, void *data, void *user_data) ;
-int debug_handler(const char *path, const char *types, lo_arg **argv, int
-		    argc, void *data, void *user_data) ;
+		     void *data, void *user_data) ;
+int osc_update_handler(const char *path, const char *types, lo_arg **argv, int
+		       argc, void *data, void *user_data) ;
+int osc_program_handler(const char *path, const char *types, lo_arg **argv, int
+			argc, void *data, void *user_data) ;
+int osc_configure_handler(const char *path, const char *types, lo_arg **argv, int
+			  argc, void *data, void *user_data) ;
+int osc_debug_handler(const char *path, const char *types, lo_arg **argv, int
+		      argc, void *data, void *user_data) ;
 
 void
 signalHandler(int sig)
@@ -368,7 +374,7 @@ main(int argc, char **argv)
     void *pluginObject = 0;
     char *directory;
     const char **ports;
-    char update_path[32];
+    char path_buffer[32];
     char *tmp;
     char *url;
     int i;
@@ -383,6 +389,8 @@ main(int argc, char **argv)
     sigaddset(&_signals, SIGUSR1);
     sigaddset(&_signals, SIGUSR2);
     pthread_sigmask(SIG_BLOCK, &_signals, 0);
+
+    fprintf(stderr, "dssi_example_host starting...\n");
 
     /* Parse args and report usage */
 
@@ -502,22 +510,30 @@ main(int argc, char **argv)
 
     /* Create OSC thread */
 
-    serverThread = lo_server_thread_new("4444", osc_error);
+    serverThread = lo_server_thread_new(NULL, osc_error);
     snprintf((char *)osc_path, 31, "/dssi/test.1");
-    snprintf(update_path, 31, "%s/update", osc_path);
     tmp = lo_server_thread_get_url(serverThread);
     url = (char *)malloc(strlen(tmp) + strlen(osc_path));
     sprintf(url, "%s%s", tmp, osc_path + 1);
     printf("registering %s\n", url);
     free(tmp);
 
-    lo_server_thread_add_method(serverThread, osc_path, "if", osc_handler,
-				NULL);
-    lo_server_thread_add_method(serverThread, osc_path, "m", osc_midi_handler,
-				NULL);
-    lo_server_thread_add_method(serverThread, update_path, "s", update_handler,
-				NULL);
-    lo_server_thread_add_method(serverThread, NULL, NULL, debug_handler,
+    snprintf(path_buffer, 31, "%s/control", osc_path);
+    lo_server_thread_add_method(serverThread, path_buffer, "if", osc_control_handler, NULL);
+
+    snprintf(path_buffer, 31, "%s/midi", osc_path);
+    lo_server_thread_add_method(serverThread, path_buffer, "m", osc_midi_handler, NULL);
+
+    snprintf(path_buffer, 31, "%s/update", osc_path);
+    lo_server_thread_add_method(serverThread, path_buffer, "s", osc_update_handler, NULL);
+
+    snprintf(path_buffer, 31, "%s/program", osc_path);
+    lo_server_thread_add_method(serverThread, path_buffer, "ii", osc_program_handler, NULL);
+
+    snprintf(path_buffer, 31, "%s/configure", osc_path);
+    lo_server_thread_add_method(serverThread, path_buffer, "ss", osc_configure_handler, NULL);
+
+    lo_server_thread_add_method(serverThread, NULL, NULL, osc_debug_handler,
 				NULL);
     lo_server_thread_start(serverThread);
 
@@ -649,10 +665,11 @@ main(int argc, char **argv)
 	if (poll(pfd, npfd, 100) > 0) {
 	    midi_callback();
 	}
+	//!!! and update programs too:
 	for (i = 0; i < controlIns; ++i) {
 	    if (pluginPortUpdated[pluginControlInPortNumbers[i]]) {
 		if (uiTarget) {
-		    lo_send(uiTarget, osc_path, "if",
+		    lo_send(uiTarget, gui_osc_control_path, "if",
 			    pluginControlInPortNumbers[i], pluginControlIns[i]);
 		}
 		pluginPortUpdated[pluginControlInPortNumbers[i]] = 0;
@@ -776,8 +793,8 @@ int osc_midi_handler(const char *path, const char *types, lo_arg **argv, int arg
 }
 
 
-int osc_handler(const char *path, const char *types, lo_arg **argv, int argc,
-                 void *data, void *user_data) 
+int osc_control_handler(const char *path, const char *types, lo_arg **argv, int argc,
+			void *data, void *user_data) 
 {
     int port = argv[0]->i;
     LADSPA_Data value = argv[1]->f;
@@ -796,29 +813,57 @@ int osc_handler(const char *path, const char *types, lo_arg **argv, int argc,
     return 0;
 }
 
-int update_handler(const char *path, const char *types, lo_arg **argv, int argc,
-                 void *data, void *user_data) 
+int osc_program_handler(const char *path, const char *types, lo_arg **argv, int argc,
+			void *data, void *user_data) 
+{
+    fprintf(stderr, "OSC program handler not yet implemented\n");
+    return 0;
+}
+
+int osc_configure_handler(const char *path, const char *types, lo_arg **argv, int argc,
+			  void *data, void *user_data) 
+{
+    fprintf(stderr, "OSC configure handler not yet implemented\n");
+    return 0;
+}
+
+int osc_update_handler(const char *path, const char *types, lo_arg **argv, int argc,
+		       void *data, void *user_data) 
 {
     const char *url = (char *)&argv[0]->s;
     unsigned int i;
     char *host, *port;
 
     printf("OSC: got update request from <%s>\n", url);
+
     host = lo_url_get_hostname(url);
     port = lo_url_get_port(url);
     uiTarget = lo_target_new(host, port);
     free(host);
     free(port);
+
+    path = lo_url_get_path(url);
+
+    if (gui_osc_control_path) free(gui_osc_control_path);
+    gui_osc_control_path = (char *)malloc(strlen(path) + 10);
+    sprintf(gui_osc_control_path, "%s/control", path);
+
+    if (gui_osc_program_path) free(gui_osc_program_path);
+    gui_osc_program_path = (char *)malloc(strlen(path) + 10);
+    sprintf(gui_osc_program_path, "%s/program", path);
+
+    free(path);
+
     for (i=0; i<controlIns; i++) {
 	int port = pluginControlInPortNumbers[i];
-	lo_send(uiTarget, osc_path, "if", port, pluginControlIns[i]);
+	lo_send(uiTarget, gui_osc_control_path, "if", port, pluginControlIns[i]);
     }
 
     return 0;
 }
 
-int debug_handler(const char *path, const char *types, lo_arg **argv,
-                    int argc, void *data, void *user_data)
+int osc_debug_handler(const char *path, const char *types, lo_arg **argv,
+		      int argc, void *data, void *user_data)
 {
     int i;
 

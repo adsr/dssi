@@ -201,49 +201,79 @@ dll named PLUGINS.so in directory DIRECTORY, the host may look in the
 directory DIRECTORY/PLUGINS/ for executable files beginning with the
 string PLUGIN.  (If there are several, the expectation is that the
 suffix will somehow determine the host's preference -- for example,
-PLUGIN_qt, PLUGIN_gl -- a convention for this ought to be determined,
-but hasn't been yet.)
+PLUGIN_qt, PLUGIN_gl -- a convention for this ought to be determined.)
 
 The host then starts the chosen executable with a command line
-supplying the OSC URL that the GUI should use to communicate with the
-host, identifying the host and the path for the GUI's plugin method.
-The GUI then requests an update, passing its own OSC URL to the host;
-the host responds by sending the current values of all the ports, and
-startup is complete.
+consisting of:
+  * the executable name in argv[0] as normal
+  * the OSC URL for the host, identifying the host and the base path
+    for the correct plugin instance (see Paths and Methods below)
+  * the name of the .so in which the plugin was found (here PLUGINS.so)
+  * the label of the plugin (here PLUGIN).
 
-*!!! -- host needs to send plugin so and label to GUI as well!
+The GUI then requests an update, passing its own OSC URL and base path
+to the host; the host responds by sending the current values of all
+the ports, and startup is complete.
 
 3. Paths and Methods
 
 An OSC method call consists of a path -- identifying the method being
 called -- and a sequence of typed arguments. 
 
-The DSSI host is expected to associate a path with each plugin
-instance; this is the path made available to the GUI on startup.
+The DSSI host and GUI are each expected to think of an arbitrary path
+to associate with each plugin instance, known as the "base path".
+This will presumably have some internal and/or diagnostic meaning:
+e.g. a host might use "/dssi/PLUGINS/PLUGIN.1" for the path to the
+first instance of plugin labelled PLUGIN in PLUGINS.so.  Individual
+method calls are always made to a subpath of the base path, as
+detailed below.
 
-Setting Port Values
+Base paths are exchanged on startup: the host gives its path to the
+GUI on the command line, the GUI returns its own as the argument to an
+update call.
 
-The plugin path can be called directly by the GUI to set a port value.
-For example, the host may elect to associate the path
-"/dssi/myplugins/plugin.1" with instance 1 of the plugin labelled
-"plugin" from dll "myplugins.so".  Once it has made this path known to
-the GUI, the GUI can then call it with port number and value arguments
-to set a port.
+These are the methods the host may support:
 
-GUI Updates
+  <base path>/control  (e.g. "/dssi/PLUGINS/PLUGIN.1/control")
+  Set a control port value on the plugin at <base path>.  Takes an int
+  argument for port number and a float for value.  (required method)
 
-The GUI must request a complete update from the host on startup, and
-may do so again at any time.  To do so, it passes its own OSC URL to
-the host via the "/update" subpath of the plugin path.  For example,
-if the host has elected to associate "/dssi/myplugins/plugin.1" with
-the instance of the plugin that the GUI is operating, the GUI can call
-"/dssi/myplugins/plugin.1/update", passing its own URL as a single
-string argument.  The host then calls that URL once for each port,
-with int and float arguments for port number and value.
+  <base path>/program
+  Make a program change on the plugin.  Takes two int arguments, for
+  bank and program number.  (required method)
 
-*!!! -- configure() requests
-*!!! -- MIDI over OSC
-*!!! -- program changes
+  <base path>/update
+  Request an update on the GUI.  Takes one string argument, the GUI's
+  own OSC URL with base path.  The host should respond by sending the
+  current state of the plugin to the GUI in a series of control and
+  program OSC calls.  (required method, and the GUI is required to
+  use it)
+  
+  <base path>/configure
+  Make a configure() call to the plugin.  Takes two string arguments
+  for key and value.  See the documentation for configure() in dssi.h.
+  (required method)
+
+  <base path>/midi
+  Send an arbitrary MIDI event to the plugin.  Takes a four-byte MIDI
+  string.  This is expected to be used for note data generated from a
+  test panel on the GUI, for example.  It should not be used for
+  program or controller changes, sysex data, etc.  A host should
+  feel free to drop any values it doesn't wish to pass on.  No
+  guarantees are provided about timing accuracy, etc, of the MIDI
+  communication.  (optional method)
+
+And these are the methods the GUI may support:
+
+  <base path>/control
+  Update the GUI from an automated control change.  Takes an int
+  argument for port number and float for value.  (required method)
+
+  <base path>/program
+  Update the GUI from an automated program change.  Takes an int
+  argument for bank number and int for value.  (required method if
+  the plugin supports program changes)
+
 
 "Project Plan"
 --------------

@@ -27,9 +27,13 @@ using std::endl;
 #define LTS_PORT_TIMBRE  6
 
 
-SynthGUI::SynthGUI(char *host, char *port, char *path, QWidget *w) :
+SynthGUI::SynthGUI(QString host, QString port,
+		   QString controlPath, QString midiPath, QString programPath,
+		   QWidget *w) :
     QFrame(w),
-    m_path(path),
+    m_controlPath(controlPath),
+    m_midiPath(midiPath),
+    m_programPath(programPath),
     m_suppressHostUpdate(true)
 {
     m_host = lo_address_new(host, port);
@@ -156,9 +160,9 @@ SynthGUI::tuningChanged(int value)
     m_tuningLabel->setText(QString("%1 Hz").arg(hz));
 
     if (!m_suppressHostUpdate) {
-	cerr << "Sending to host: " << m_path
+	cerr << "Sending to host: " << m_controlPath
 	     << " port " << LTS_PORT_FREQ << " to " << hz << endl;
-	lo_send(m_host, m_path, "if", LTS_PORT_FREQ, hz);
+	lo_send(m_host, m_controlPath, "if", LTS_PORT_FREQ, hz);
     }
 }
 
@@ -169,7 +173,7 @@ SynthGUI::attackChanged(int value)
     m_attackLabel->setText(QString("%1 sec").arg(sec));
 
     if (!m_suppressHostUpdate) {
-	lo_send(m_host, m_path, "if", LTS_PORT_ATTACK, sec);
+	lo_send(m_host, m_controlPath, "if", LTS_PORT_ATTACK, sec);
     }
 }
 
@@ -180,7 +184,7 @@ SynthGUI::decayChanged(int value)
     m_decayLabel->setText(QString("%1 sec").arg(sec));
 
     if (!m_suppressHostUpdate) {
-	lo_send(m_host, m_path, "if", LTS_PORT_DECAY, sec);
+	lo_send(m_host, m_controlPath, "if", LTS_PORT_DECAY, sec);
     }
 }
 
@@ -190,7 +194,7 @@ SynthGUI::sustainChanged(int value)
     m_sustainLabel->setText(QString("%1 %").arg(value));
 
     if (!m_suppressHostUpdate) {
-	lo_send(m_host, m_path, "if", LTS_PORT_SUSTAIN, float(value));
+	lo_send(m_host, m_controlPath, "if", LTS_PORT_SUSTAIN, float(value));
     }
 }
 
@@ -201,7 +205,7 @@ SynthGUI::releaseChanged(int value)
     m_releaseLabel->setText(QString("%1 sec").arg(sec));
 
     if (!m_suppressHostUpdate) {
-	lo_send(m_host, m_path, "if", LTS_PORT_RELEASE, sec);
+	lo_send(m_host, m_controlPath, "if", LTS_PORT_RELEASE, sec);
     }
 }
 
@@ -212,7 +216,7 @@ SynthGUI::timbreChanged(int value)
     m_timbreLabel->setText(QString("%1").arg(val));
 
     if (!m_suppressHostUpdate) {
-	lo_send(m_host, m_path, "if", LTS_PORT_TIMBRE, val);
+	lo_send(m_host, m_controlPath, "if", LTS_PORT_TIMBRE, val);
     }
 }
 
@@ -221,7 +225,7 @@ SynthGUI::test_press()
 {
     unsigned char noteon[4] = { 0x90, 0x3C, 0x40, 0x00 };
 
-    lo_send(m_host, m_path, "m", noteon);
+    lo_send(m_host, m_midiPath, "m", noteon);
 }
 
 void
@@ -229,7 +233,7 @@ SynthGUI::test_release()
 {
     unsigned char noteoff[4] = { 0x90, 0x3C, 0x00, 0x00 };
 
-    lo_send(m_host, m_path, "m", noteoff);
+    lo_send(m_host, m_midiPath, "m", noteoff);
 }
 
 SynthGUI::~SynthGUI()
@@ -252,7 +256,7 @@ debug_handler(const char *path, const char *types, lo_arg **argv,
 {
     int i;
 
-    cerr << "Warning: unhandled OSC message:" << endl;
+    cerr << "Warning: unhandled OSC message in GUI:" << endl;
 
     for (i = 0; i < argc; ++i) {
 	cerr << "arg " << i << ": type '" << types[i] << "': ";
@@ -265,13 +269,21 @@ debug_handler(const char *path, const char *types, lo_arg **argv,
 }
 
 int
-update_handler(const char *path, const char *types, lo_arg **argv,
+program_handler(const char *path, const char *types, lo_arg **argv,
 	       int argc, void *data, void *user_data)
+{
+    cerr << "Program handler not yet implemented" << endl;
+    return 0;
+}
+
+int
+control_handler(const char *path, const char *types, lo_arg **argv,
+		int argc, void *data, void *user_data)
 {
     SynthGUI *gui = static_cast<SynthGUI *>(user_data);
 
     if (argc < 2) {
-	cerr << "Error: too few arguments to update_handler" << endl;
+	cerr << "Error: too few arguments to control_handler" << endl;
 	return 1;
     }
 
@@ -321,6 +333,8 @@ update_handler(const char *path, const char *types, lo_arg **argv,
 int
 main(int argc, char **argv)
 {
+    cerr << "less_trivial_synth_qt_gui starting..." << endl;
+
     QApplication application(argc, argv);
 
     if (application.argc() != 4) {
@@ -339,18 +353,29 @@ main(int argc, char **argv)
     char *port = lo_url_get_port(url);
     char *path = lo_url_get_path(url);
 
-    SynthGUI gui(host, port, path);
+    SynthGUI gui(host, port,
+		 QString("%1/control").arg(path),
+		 QString("%1/midi").arg(path),
+		 QString("%1/program").arg(path),
+		 0);
+		 
     application.setMainWidget(&gui);
     gui.show();
 
-    lo_server_thread thread = lo_server_thread_new("4445", osc_error);
-    lo_server_thread_add_method(thread, path, "if", update_handler, &gui);
+    QString myControlPath = QString("%1/control").arg(path);
+    QString myProgramPath = QString("%1/program").arg(path);
+
+    lo_server_thread thread = lo_server_thread_new(NULL, osc_error);
+    lo_server_thread_add_method(thread, myControlPath, "if", control_handler, &gui);
+    lo_server_thread_add_method(thread, myProgramPath, "if", program_handler, &gui);
     lo_server_thread_add_method(thread, NULL, NULL, debug_handler, &gui);
     lo_server_thread_start(thread);
 
     lo_address hostaddr = lo_address_new(host, port);
-    lo_send(hostaddr, QString("%1/update").arg(path),
-	    "s", "osc://localhost:4445/");
+    lo_send(hostaddr,
+	    QString("%1/update").arg(path),
+	    "s",
+	    QString("%1%2").arg(lo_server_thread_get_url(thread)).arg(path+1).data());
 
     return application.exec();
 }

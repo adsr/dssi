@@ -27,7 +27,9 @@ class SynthGUI : public QFrame
     Q_OBJECT
 
 public:
-    SynthGUI(char *host, char *port, char *path, QWidget *w = 0);
+    SynthGUI(QString host, QString port,
+	     QString controlPath, QString midiPath, QString programPath,
+	     QWidget *w = 0);
     virtual ~SynthGUI();
 
 public slots:
@@ -64,7 +66,9 @@ protected:
     QLabel *m_timbreLabel;
 
     lo_address m_host;
-    QString m_path;
+    QString m_controlPath;
+    QString m_midiPath;
+    QString m_programPath;
 
     bool m_suppressHostUpdate;
 };
