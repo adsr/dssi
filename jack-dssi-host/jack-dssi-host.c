@@ -910,13 +910,21 @@ main(int argc, char **argv)
     /* Create buffers and JACK client and ports */
 
     char clientName[33];
-    strncpy(clientName, plugin->label, 20);
-    clientName[25] = '\0';
-    sprintf(clientName + strlen(clientName), " [dssi:%d]", (int)getpid());
-    
+    if (instance_count > 1) strcpy(clientName, "jack-dssi-host");
+    else {
+	strncpy(clientName, plugin->descriptor->LADSPA_Plugin->Name, 32);
+	clientName[32] = '\0';
+    }
+
     if ((jackClient = jack_client_new(clientName)) == 0) {
-        fprintf(stderr, "\njack-dssi-host: Error: Failed to connect to JACK server\n");
-	return 1;
+
+	clientName[22] = '\0';
+	sprintf(clientName + strlen(clientName), " (%d)", (int)getpid());
+
+	if ((jackClient = jack_client_new(clientName)) == 0) {
+	    fprintf(stderr, "\njack-dssi-host: Error: Failed to connect to JACK server\n");
+	    return 1;
+	}
     }
 
     inputPorts = (jack_port_t **)malloc(insTotal * sizeof(jack_port_t *));
@@ -947,28 +955,57 @@ main(int argc, char **argv)
                           sizeof(int));
     }
 
-    for (in = 0; in < insTotal; in++) {
-        /* !FIX! this to have more descriptive names */
-        char portName[20];
-        sprintf(portName, "in_%02d", in + 1);
-        inputPorts[in] = jack_port_register(jackClient, portName,
-					    JACK_DEFAULT_AUDIO_TYPE,
-					    JackPortIsInput, 0);
-	pluginInputBuffers[in] =
-	    (float *)calloc(jack_get_buffer_size(jackClient), sizeof(float));
+    in = 0;
+    out = 0;
+    reps = 0;
+    for (i = 0; i < instance_count; i++) {
+	if (i > 0 &&
+	    !strcmp(instances[i  ].plugin->descriptor->LADSPA_Plugin->Name,
+		    instances[i-1].plugin->descriptor->LADSPA_Plugin->Name)) {
+	    ++reps;
+	} else if (i < instance_count - 1 &&
+		   !strcmp(instances[i  ].plugin->descriptor->LADSPA_Plugin->Name,
+			   instances[i+1].plugin->descriptor->LADSPA_Plugin->Name)) {
+	    reps = 1;
+	} else {
+	    reps = 0;
+	}
+	for (j = 0; j < instances[i].plugin->ins; ++j) {
+	    char portName[40];
+	    strncpy(portName, instances[i].plugin->descriptor->LADSPA_Plugin->Name, 30);
+	    if (reps > 0) {
+		portName[25] = '\0';
+		sprintf(portName + strlen(portName), " %d in_%d", reps, j + 1);
+	    } else {
+		portName[30] = '\0';
+		sprintf(portName + strlen(portName), " in_%d", j + 1);
+	    }
+	    inputPorts[in] = jack_port_register(jackClient, portName,
+						JACK_DEFAULT_AUDIO_TYPE,
+						JackPortIsInput, 0);
+	    pluginInputBuffers[in] =
+		(float *)calloc(jack_get_buffer_size(jackClient), sizeof(float));
+	    ++in;
+	}
+	for (j = 0; j < instances[i].plugin->outs; ++j) {
+	    char portName[40];
+	    strncpy(portName, instances[i].plugin->descriptor->LADSPA_Plugin->Name, 30);
+	    if (reps > 0) {
+		portName[25] = '\0';
+		sprintf(portName + strlen(portName), " %d out_%d", reps, j + 1);
+	    } else {
+		portName[30] = '\0';
+		sprintf(portName + strlen(portName), " out_%d", j + 1);
+	    }
+	    outputPorts[out] = jack_port_register(jackClient, portName,
+						  JACK_DEFAULT_AUDIO_TYPE,
+						  JackPortIsOutput, 0);
+	    pluginOutputBuffers[out] =
+		(float *)calloc(jack_get_buffer_size(jackClient), sizeof(float));
+	    ++out;
+	}
     }
-
-    for (out = 0; out < outsTotal; out++) {
-        /* !FIX! this to have more descriptive names */
-	char portName[20];
-	sprintf(portName, "out_%02d", out + 1);
-	outputPorts[out] = jack_port_register(jackClient, portName,
-					      JACK_DEFAULT_AUDIO_TYPE,
-					      JackPortIsOutput, 0);
-	pluginOutputBuffers[out] = 
-	    (float *)calloc(jack_get_buffer_size(jackClient), sizeof(float));
-    }
-
+    
     jack_set_process_callback(jackClient, audio_callback, 0);
 
     /* Instantiate plugins */
