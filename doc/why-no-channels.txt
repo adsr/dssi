@@ -1,0 +1,65 @@
+
+Why doesn't DSSI use MIDI channels?
+-----------------------------------
+
+The DSSI header explicitly says that a plugin should ignore the
+channel field of each incoming event.  Why?
+
+In principle, having 16 (or however many) channels per plugin is
+simply equivalent to having the plugin instantiated 16 (or however
+many) times and using each one separately.  So there is some logical
+basis there.
+
+But there are several persuasive reasons why DSSI might want to use
+MIDI channels, particularly when acting as an interface to an already
+existing synth implementation.  If your synth already implements MIDI
+channels, then it seems absurd to ignore that part of MIDI when making
+it communicate with an API based on MIDI events.  It's also possible
+your synth may be implemented in a way that works better with
+multi-channel support: for example because MIDI events on all channels
+will arrive in a single MIDI stream, thus imposing a strict order on
+note-on/off events for different voices, something that is hard to
+ensure in a case where the voices are in different instances that may
+potentially even be hosted in different threads.
+
+However, there are also some serious reasons why DSSI should not
+support multiple channels per instance.
+
+Making the 16 MIDI channels compulsory for each plugin would be a
+burden on implementers of simple plugins -- and DSSI does tend to be
+geared toward simple plugins.  We could make channel support optional,
+but that presents the host with a difficult dilemma: how to present
+the user with a nice simple selection of a particular synth for a
+particular track.
+
+With optional channel support, a host may choose to present the plugin
+to the user as if it were another MIDI synth, so the user gets to
+create instances and assign channels.  Some users would like that, and
+it might fit well with a MIDI-oriented host, but it loses one of the
+nice advantages of a soft-synth over a MIDI synth: that as the user
+you shouldn't have to worry about things like channel assignments,
+instead dealing directly with tracks or whatever your preferred music
+editor uses.
+
+Or the host may hide the channel business from the user, which means
+it would need to be aware of how many channels are available from a
+given plugin and to assign them from track to plugin appropriately,
+and also to merge events from separate tracks into a single plugin
+run_synth call in cases where they happen to be mapped to separate
+channels on the same plugin and keep them separate otherwise.
+
+Or else the host can just instantiate one plugin per channel
+regardless of how many channels the plugin declares that it can do.
+In which case the plugin has gained nothing.
+
+A more fundamental objection to using channels in DSSI concerns the
+basis of DSSI in LADSPA.  If you have multiple channels per instance,
+you have to support changing programs and banks on the channels
+separately.  Fine, we can do that.  But you also have to deal with
+control values.  MIDI obviously has per-channel controllers, but
+DSSI's fundamental controllers are simply LADSPA control ports, and
+LADSPA has no concept of channels.  It simply isn't possible to do all
+of multi-channel instances, LADSPA-backed plugins, and MIDI-LADSPA
+control port mapping, or at least not cleanly: one of them has to go,
+and that one is multi-channel instances.
+

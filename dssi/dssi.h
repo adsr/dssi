@@ -218,7 +218,8 @@ typedef struct _DSSI_Descriptor {
      * events to the synth.  Each event is timestamped relative to the
      * start of the block, (mis)using the ALSA "tick time" field as a
      * frame count. The host is responsible for ensuring that events
-     * with differing timestamps are already ordered by time.
+     * with differing timestamps are already ordered by time.  The
+     * plugin should ignore the "channel" field of each event.
      *
      * See also the notes on activation, port connection etc in
      * ladpsa.h, in the context of the LADSPA run() function.
