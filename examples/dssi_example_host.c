@@ -40,6 +40,7 @@ static int controlIns, controlOuts;
 static float *pluginControlIns, *pluginControlOuts;
 static unsigned long *pluginControlInPortNumbers;
 static int *pluginPortControlInNumbers;
+static int *pluginPortUpdated;
 
 static LADSPA_Handle pluginHandle = 0;
 static const DSSI_Descriptor *pluginDescriptor = 0;
@@ -140,6 +141,7 @@ setControl(long controlIn, snd_seq_event_t *event)
 	   controlIn, value);
 
     pluginControlIns[controlIn] = value;
+    pluginPortUpdated[pluginControlInPortNumbers[controlIn]] = 1;
 }
 
 int
@@ -349,6 +351,9 @@ main(int argc, char **argv)
     pluginPortControlInNumbers =
 	(int *)malloc(pluginDescriptor->LADSPA_Plugin->PortCount *
 				sizeof(int));
+    pluginPortUpdated =
+	(int *)malloc(pluginDescriptor->LADSPA_Plugin->PortCount *
+				sizeof(int));
 
     outputPorts = (jack_port_t **)malloc(outs * sizeof(jack_port_t *));
     pluginOutputBuffers = (float **)malloc(outs * sizeof(float *));
@@ -413,6 +418,7 @@ main(int argc, char **argv)
 	    pluginDescriptor->LADSPA_Plugin->PortDescriptors[i];
 
 	pluginPortControlInNumbers[i] = -1;
+	pluginPortUpdated[i] = 0;
 
 	if (LADSPA_IS_PORT_AUDIO(pod)) {
 
@@ -512,9 +518,18 @@ main(int argc, char **argv)
     MB_MESSAGE("Ready\n");
 
     while (1) {
-	if (poll(pfd, npfd, 100000) > 0) {
+	if (poll(pfd, npfd, 100) > 0) {
 	    midi_callback();
-	}  
+	}
+	for (i = 0; i < controlIns; ++i) {
+	    if (pluginPortUpdated[pluginControlInPortNumbers[i]]) {
+		if (uiTarget) {
+		    lo_send(uiTarget, osc_path, "if",
+			    pluginControlInPortNumbers[i], pluginControlIns[i]);
+		}
+		pluginPortUpdated[pluginControlInPortNumbers[i]] = 0;
+	    }
+	}
     }
 }
 
@@ -609,7 +624,7 @@ int osc_handler(const char *path, const char *types, lo_arg **argv, int argc,
 int update_handler(const char *path, const char *types, lo_arg **argv, int argc,
                  void *data, void *user_data) 
 {
-    const char *url = &argv[0]->s;
+    const char *url = (char *)&argv[0]->s;
     unsigned int i;
     char *host, *port;
 

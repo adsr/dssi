@@ -63,7 +63,7 @@ printf("registering %s\n", path);
     /* quit if we go 1 second without an OSC update message */
     while (!done) {
 	done = 1;
-	sleep(1);
+	sleep(100);
     }
 
     return 0;
