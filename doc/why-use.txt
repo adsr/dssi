@@ -60,7 +60,7 @@ want to make it a DSSI plugin.
 
  * Simplicity
 
-   Writing DSSI plugins is easy -- the only hard part is that
+   Writing the plugin is easy -- the only hard part is that
    troublesome synthesis...
 
    Plugins can very easily be written incrementally, creating and
