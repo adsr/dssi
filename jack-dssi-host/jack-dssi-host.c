@@ -92,6 +92,7 @@ static sigset_t _signals;
 
 int exiting = 0;
 static int verbose = 0;
+static int load_guis = 1;
 const char *myName = NULL;
 
 #define EVENT_BUFFER_SIZE 1024
@@ -748,8 +749,9 @@ main(int argc, char **argv)
     /* Parse args and report usage */
 
     if (argc < 2) {
-	fprintf(stderr, "\nUsage: %s [-v] [-p <projdir>] [-<i>] <libname>[%c<label>] [...]\n", argv[0], LABEL_SEP);
+	fprintf(stderr, "\nUsage: %s [-v] [-n] [-p <projdir>] [-<i>] <libname>[%c<label>] [...]\n", argv[0], LABEL_SEP);
 	fprintf(stderr, "\n  -v        Verbose mode\n");
+	fprintf(stderr, "  -n        No GUIs\n");
 	fprintf(stderr, "  <projdir> Project directory to pass to plugin and UI\n");
 	fprintf(stderr, "  <i>       Number of instances of each plugin to run (max %d total, default 1)\n", D3H_MAX_INSTANCES);
 	fprintf(stderr, "  <libname> DSSI plugin library .so to load (searched for in $DSSI_PATH)\n");
@@ -772,6 +774,10 @@ main(int argc, char **argv)
 
 	if (!strcmp(argv[i], "-v")) {
 	    verbose = 1;
+	    continue;
+	}
+	if (!strcmp(argv[i], "-n")) {
+	    load_guis = 0;
 	    continue;
 	}
 
@@ -1281,14 +1287,16 @@ main(int argc, char **argv)
     /* Attempt to locate and start up a GUI for the plugin -- but
      * continue even if we can't */
     /* -FIX- Ack! So many windows all at once! */
-    for (i = 0; i < instance_count; i++) {
-        char tag[12];
-        plugin = instances[i].plugin;
-        snprintf(osc_path_tmp, 1024, "%s/%s", url, instances[i].friendly_name);
-        snprintf(tag, 12, "channel %d", instances[i].channel);
-	printf("\n%s: OSC URL is:\n%s\n\n", myName, osc_path_tmp);
-        startGUI(plugin->dll->directory, plugin->dll->name,
-                 plugin->descriptor->LADSPA_Plugin->Label, osc_path_tmp, tag);
+    if (load_guis) {
+        for (i = 0; i < instance_count; i++) {
+            char tag[12];
+            plugin = instances[i].plugin;
+            snprintf(osc_path_tmp, 1024, "%s/%s", url, instances[i].friendly_name);
+            snprintf(tag, 12, "channel %d", instances[i].channel);
+            printf("\n%s: OSC URL is:\n%s\n\n", myName, osc_path_tmp);
+            startGUI(plugin->dll->directory, plugin->dll->name,
+                    plugin->descriptor->LADSPA_Plugin->Label, osc_path_tmp, tag);
+        }
     }
 
     MB_MESSAGE("Ready\n");
