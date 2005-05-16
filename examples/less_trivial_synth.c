@@ -10,6 +10,10 @@
    This example file is in the public domain.
 */
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
+
 #include <stdlib.h>
 #include <limits.h>
 #include <string.h>
@@ -66,8 +70,13 @@ typedef enum {
 typedef union {
     uint32_t all;
     struct {
+#ifdef WORDS_BIGENDIAN
+	uint16_t in;
+	uint16_t fr;
+#else
 	uint16_t fr;
 	uint16_t in;
+#endif
     } part;
 } fixp;
 

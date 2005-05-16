@@ -33,12 +33,19 @@
 #define _SVID_SOURCE   1
 #define _ISOC99_SOURCE 1
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
+
 #include <ladspa.h>
 #include "dssi.h"
 #include <alsa/asoundlib.h>
 #include <alsa/seq.h>
 #include <jack/jack.h>
 #include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include <assert.h>
 #include <dlfcn.h>
 #include <unistd.h>
 #include <math.h>
@@ -1181,7 +1188,7 @@ main(int argc, char **argv)
 
     /* Connect and activate plugins */
 
-    for (in = 0; in < insTotal; in++) {
+    for (in = 0; in < controlInsTotal; in++) {
         pluginPortUpdated[in] = 0;
     }
 

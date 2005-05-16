@@ -23,6 +23,7 @@
 #include <qgroupbox.h>
 #include <iostream>
 #include <unistd.h>
+#include <math.h>
 #include <sndfile.h>
 
 #include "dssi.h"
