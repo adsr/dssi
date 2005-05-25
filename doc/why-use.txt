@@ -71,10 +71,12 @@ want to make it a DSSI plugin.
    plugins with a single extra function to accept incoming note
    events.
 
-   The DSSI distribution contains several complete example plugins,
-   from the simplest possible monophonic synth, through
-   straightforward polyphonic synths, monotimbral samplers, and a
-   Fluidsynth wrapper.  Most of these plugins include GUIs, with Qt
+   Source code to a number of plugins is available to serve as
+   examples or bases for new efforts, including the simplest-
+   possible monophonic synth, straightforward polyphonic synth, and
+   monotimbral samplers of the DSSI distribution itself, plus analog
+   and FM synths (Xsynth-DSSI and hexter) and a FluidSynth wrapper
+   (FluidSynth-DSSI). Most of these plugins include GUIs, with Qt
    and GTK examples available.
 
  * Clear host-neutral specification
@@ -162,9 +164,8 @@ sequencer or other plugin host application.
    application are limited, and DSSI is the only one we know of that
    even has a written specification.  While there aren't very many
    DSSI plugins available at the time of writing -- hardly surprising,
-   as it's still a new API -- the example distribution alone already
-   contains more useful plugins than are available for any of the
-   alternatives.
+   as it's still a new API -- DSSI is now supported by more hosts
+   than any of the alternatives.
 
  * Free VST support
 

@@ -64,7 +64,9 @@
 
 #include "../message_buffer/message_buffer.h"
 
+#ifdef MIDI_ALSA
 static snd_seq_t *alsaClient;
+#endif
 
 static jack_client_t *jackClient;
 static jack_port_t **inputPorts, **outputPorts;
@@ -137,6 +139,7 @@ midi_callback()
 
     pthread_mutex_lock(&midiEventBufferMutex);
 
+#ifdef MIDI_ALSA
     do {
 	if (snd_seq_event_input(alsaClient, &ev) > 0) {
 
@@ -172,6 +175,7 @@ midi_callback()
 	}
 	
     } while (snd_seq_event_input_pending(alsaClient, 0) > 0);
+#endif
 
     pthread_mutex_unlock(&midiEventBufferMutex);
 }
@@ -1050,7 +1054,7 @@ main(int argc, char **argv)
 
     if (instance_count > 1) strcpy(clientName, "jack-dssi-host");
     else {
-	strncpy(clientName, plugin->descriptor->LADSPA_Plugin->Name, 32);
+	strncpy(clientName, instances[0].plugin->descriptor->LADSPA_Plugin->Name, 32);
 	clientName[32] = '\0';
     }
 
@@ -1291,6 +1295,7 @@ main(int argc, char **argv)
 
     /* Create ALSA MIDI port */
 
+#ifdef MIDI_ALSA
     if (snd_seq_open(&alsaClient, "hw", SND_SEQ_OPEN_DUPLEX, 0) < 0) {
 	fprintf(stderr, "\n%s: Error: Failed to open ALSA sequencer interface\n",
 		myName);
@@ -1310,6 +1315,7 @@ main(int argc, char **argv)
     npfd = snd_seq_poll_descriptors_count(alsaClient, POLLIN);
     pfd = (struct pollfd *)alloca(npfd * sizeof(struct pollfd));
     snd_seq_poll_descriptors(alsaClient, pfd, npfd, POLLIN);
+#endif /* MIDI_ALSA */
 
     mb_init("host: ");
 
@@ -1361,9 +1367,11 @@ main(int argc, char **argv)
 
     while (!exiting) {
 
+#ifdef MIDI_ALSA
 	if (poll(pfd, npfd, 100) > 0) {
 	    midi_callback();
 	}
+#endif /* MIDI_ALSA */
 
 	/* Race conditions here, because the programs and ports are
 	   updated from the audio thread.  We at least try to minimise

@@ -32,70 +32,84 @@ You'll find here:
   examples/trivial_sampler_qt_gui.cpp -- a very simple Qt GUI for
   the above
 
-  fluidsynth-dssi/ -- an example DSSI implementation of FluidSynth,
-  with a GTK+ GUI
-
 
 Requirements
 ------------
 
-To build the example code you will need:
+In order to install the development files (dssi.h and dssi.pc)
+needed to compile DSSI applications, you only need the following:
 
-  ALSA 0.9/1.0.x
+  pkgconfig with PKG_CONFIG_PATH set appropriately
+  ALSA 0.9/1.0.x (or libdssialsacompat: see
+      http://home.jps.net/~musound)
+  LADSPA SDK 1.x
+
+To build the included host and plugins, you will also need:
+
   JACK
-  LADSPA
   liblo-0.12 or above: http://www.plugin.org.uk/liblo/
   libsndfile: http://www.mega-nerd.com/libsndfile/
   libsamplerate: http://www.mega-nerd.com/SRC/
-  pkgconfig with PKG_CONFIG_PATH set appropriately to pick up liblo
 
 To build the less_trivial_synth and trivial_sampler Qt GUIs, you
 will need:
 
   Qt 3
 
-To build the fluidsynth-dssi plugin and GUI, you will need:
-
-  FluidSynth 1.0.3 or newer (libraries, headers, and source code)
-  GTK+ 1.2.x
+Note that because DSSI itself is just an API, it is possible to use
+DSSI applications (say, Rosegarden with Xsynth-DSSI) without any of
+the hosts or plugins contained in this DSSI distribution.
+Furthermore, to compile DSSI applications, only the DSSI development
+files (dssi.h and dssi.pc) are needed. OS distribution maintainers
+are urged to keep these dependencies in mind when packaging DSSI,
+and not make their `dssi-devel' package dependent on JACK or Qt, for
+example.
 
 Build
 -----
 
-Run "make" from the top-level directory.  There is no configure script.
+DSSI can be installed using the usual autoconf/automake `./configure
+&& make && make install' procedure.  See the included file INSTALL
+for generic installation instructions.
 
-You will need to ensure PKG_CONFIG_PATH is set correctly to locate the
-liblo.pc pkgconfig file.  You may also need to set the QTDIR and/or
-QTINCDIR variables, and FLUID for the location of the Fluidsynth
-sources if you want to build fluidsynth-dssi.  (FLUID should not be a
-relative path, and you _must_ build against the same version of
-fluidsynth as you have the library for installed.)
+You will need to ensure PKG_CONFIG_PATH is set correctly to locate
+the pkgconfig files for ALSA or libdssialsacompat, liblo, JACK,
+sndfile, and samplerate.  You may also need to set the QTDIR and/or
+QTINCDIR variables to point to your Qt installation.  If you do not
+have any of these, any DSSI programs or plugins dependent on them
+will not be built.
 
-For example, to build on Debian with my local fluidsynth source
-installation I use
+For example, to build on Debian I use:
 
-  FLUID=`pwd`/../fluidsynth-1.0.4-2 QTDIR=/usr QTINCDIR=/usr/include/qt3 make
+  $ QTDIR=/usr
+  $ QTINCDIR=/usr/include/qt3
+  $ PKG_CONFIG_PATH=/usr/lib/pkgconfig
+  $ export QTDIR QTINCDIR PKG_CONFIG_PATH
+  $ ./configure
+  $ make && make check
 
 After compiling, optionally test the host and example plugins (see
-below) and then run "make install" from the top-level directory to
+below) and then run `make install' from the top-level directory to
 install the dssi header, dssi.pc pkgconfig file, and the host and
 examples.  The default install prefix is /usr/local.
 
 Test
 ----
 
-The quickest test (provided you've carried out the "make install"
-step) is just to run "trivial_sampler" or "fluidsynth-dssi", which
-should have been installed in your $PREFIX/bin.  Provided JACK is
-running, these should simply start up a standalone sampler/synth with
-a GUI window.  If these both work, pretty much everything else should.
+The quickest test (provided your system has all the required
+software, you've done `make install', and JACK is running) is just
+to run `less_trivial_synth' or `trivial_sampler', which should have
+been installed in your $PREFIX/bin.  These should simply start up a
+standalone sampler/synth with a GUI window.  If these both work,
+pretty much everything else should.
 
 Here's a more descriptive test:
 
-Make sure JACK is running.  cd to ./examples and run:
+Assuming you've built the host and plugins, installed them to
+/usr/local, and JACK is running, you may run:
 
-  $ export DSSI_PATH=`pwd`
-  $ ../jack-dssi-host/jack-dssi-host less_trivial_synth.so
+  $ export DSSI_PATH=/usr/local/lib/dssi
+  $ /usr/local/bin/jack-dssi-host less_trivial_synth.so
 
 A synth GUI should pop up, with an ALSA sequencer input and JACK
 output (connected by default to the first alsa_pcm out).  If you
@@ -113,15 +127,14 @@ instantiated the plugin, started the GUI and is now managing the MIDI
 input from ALSA, control changes from the GUI and audio out to JACK.
 
 You may also run multiple synth instances simultaneously with this
-host.  If you have built both the examples and FluidSynth-DSSI, and
-installed them to /usr/local, you may run:
+host:
 
   $ export DSSI_PATH=/usr/local/lib/dssi
   $ export PATH=$PATH:/usr/local/bin     # if it's not there already
-  $ jack-dssi-host -2 less_trivial_synth.so -3 fluidsynth-dssi.so
+  $ jack-dssi-host -2 less_trivial_synth.so -3 trivial_sampler.so
 
 This will create two less_trivial_synth instances and three
-FluidSynth-DSSI instances.  Note that the instances are assigned
+trivial_sampler instances.  Note that the instances are assigned
 consecutive MIDI channels, and their outputs are spread across all
 of the available JACK physical outputs.
 
@@ -136,9 +149,6 @@ The jack-dssi-host is provided under a BSD-style license.  This means
 you can do anything you want with it so long as you retain the
 copyright attribution and license information.  See the source files
 for details.
-
-FluidSynth-DSSI is provided under the GNU General Public License.  See
-fluidsynth-dssi/COPYING for details.
 
 Licensing for the files in the examples directory may vary: please
 check the individual files for details.  Most of them are in the

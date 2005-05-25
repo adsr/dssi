@@ -1,0 +1,25 @@
+20050525 CVS commit smbolton
+
+ * Version bump to 0.9.1.
+
+ * Replaced static makefiles with a full autoconf/automake/libtool
+     build system.  Hope it solves more problems than it creates....
+
+ * Dropped message_buffer.[ch] use from less_trivial_synth.c, since
+     it's been commented out, and crashes some hosts.
+
+ * Conditionally omit the ALSA sequencer client code from
+     jack-dssi-host.c if building on a system without ALSA.
+
+20050516 CVS commit smbolton
+
+ * moved FluidSynth-DSSI to its own separate CVS module.
+
+Summary of changes, version 0.9 (20041103) through 20050510
+
+ * Fixed less_trivial_synth.c for use on big-endian systems.
+
+ * jack-dssi-host: better handling of LADSPA hinting, support for
+     audio inputs, support for LADSPA-only plugins, better signal
+     handling with cleaner shutdown, several smaller bug fixes.
+
