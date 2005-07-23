@@ -80,6 +80,7 @@ struct _d3h_instance_t {
     int              pendingProgramChange;
 
     lo_address       uiTarget;
+    lo_address       uiSource;
     int              ui_initial_show_sent;
     int              uiNeedsProgramUpdate;
     char            *ui_osc_control_path;

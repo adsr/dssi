@@ -1004,6 +1004,7 @@ main(int argc, char **argv)
                 instance->pendingBankMSB = -1;
                 instance->pendingProgramChange = -1;
                 instance->uiTarget = NULL;
+		instance->uiSource = NULL;
                 instance->ui_initial_show_sent = 0;
                 instance->uiNeedsProgramUpdate = 0;
                 instance->ui_osc_control_path = NULL;
@@ -1414,6 +1415,11 @@ main(int argc, char **argv)
             instance->uiTarget = NULL;
         }
 
+        if (instance->uiSource) {
+            lo_address_free(instance->uiSource);
+            instance->uiSource = NULL;
+        }
+
         if (instance->plugin->descriptor->LADSPA_Plugin->deactivate) {
             instance->plugin->descriptor->LADSPA_Plugin->deactivate
 		(instanceHandles[i]);
@@ -1703,12 +1709,13 @@ osc_configure_handler(d3h_instance_t *instance, lo_arg **argv)
 }
 
 int
-osc_update_handler(d3h_instance_t *instance, lo_arg **argv)
+osc_update_handler(d3h_instance_t *instance, lo_arg **argv, lo_address source)
 {
     const char *url = (char *)&argv[0]->s;
     const char *path;
     unsigned int i;
     char *host, *port;
+    const char *chost, *cport;
 
     if (verbose) {
 	printf("%s: OSC: got update request from <%s>\n", myName, url);
@@ -1720,6 +1727,11 @@ osc_update_handler(d3h_instance_t *instance, lo_arg **argv)
     instance->uiTarget = lo_address_new(host, port);
     free(host);
     free(port);
+
+    if (instance->uiSource) lo_address_free(instance->uiSource);
+    chost = lo_address_get_hostname(source);
+    cport = lo_address_get_port(source);
+    instance->uiSource = lo_address_new(chost, cport);
 
     path = lo_url_get_path(url);
 
@@ -1801,6 +1813,11 @@ osc_exiting_handler(d3h_instance_t *instance, lo_arg **argv)
         instance->uiTarget = NULL;
     }
 
+    if (instance->uiSource) {
+        lo_address_free(instance->uiSource);
+        instance->uiSource = NULL;
+    }
+
     if (instance->plugin) {
 
 	/*!!! No, this isn't safe -- plugins deactivated in this way
@@ -1851,13 +1868,18 @@ int osc_message_handler(const char *path, const char *types, lo_arg **argv,
     int i;
     d3h_instance_t *instance = NULL;
     const char *method;
+    unsigned int flen = 0;
+    lo_message message;
+    lo_address source;
+    int send_to_ui = 0;
 
     if (strncmp(path, "/dssi/", 6))
         return osc_debug_handler(path, types, argv, argc, data, user_data);
 
     for (i = 0; i < instance_count; i++) {
-        if (!strncmp(path + 6, instances[i].friendly_name,
-                     strlen(instances[i].friendly_name))) {
+	flen = strlen(instances[i].friendly_name);
+        if (!strncmp(path + 6, instances[i].friendly_name, flen) &&
+	    *(path + 6 + flen) == '/') { /* avoid matching prefix only */
             instance = &instances[i];
             break;
         }
@@ -1870,16 +1892,40 @@ int osc_message_handler(const char *path, const char *types, lo_arg **argv,
     if (instance->inactive) 
 	return 0;
     */
-    method = path + 6 + strlen(instance->friendly_name);
+    method = path + 6 + flen;
     if (*method != '/' || *(method + 1) == 0)
         return osc_debug_handler(path, types, argv, argc, data, user_data);
     method++;
 
+    message = (lo_message)data;
+    source = lo_message_get_source(message);
+
+    if (instance->uiSource && instance->uiTarget) {
+	if (strcmp(lo_address_get_hostname(source),
+		   lo_address_get_hostname(instance->uiSource)) ||
+	    strcmp(lo_address_get_port(source),
+		   lo_address_get_port(instance->uiSource))) {
+	    /* This didn't come from our known UI for this plugin,
+	       so send an update to that as well */
+	    send_to_ui = 1;
+	}
+    }
+
     if (!strcmp(method, "configure") && argc == 2 && !strcmp(types, "ss")) {
+
+	if (send_to_ui) {
+	    lo_send(instance->uiTarget, instance->ui_osc_configure_path, "ss",
+		    &argv[0]->s, &argv[1]->s);
+	}
 
         return osc_configure_handler(instance, argv);
 
     } else if (!strcmp(method, "control") && argc == 2 && !strcmp(types, "if")) {
+
+	if (send_to_ui) {
+	    lo_send(instance->uiTarget, instance->ui_osc_control_path, "if",
+		    argv[0]->i, argv[1]->f);
+	}
 
         return osc_control_handler(instance, argv);
 
@@ -1889,11 +1935,16 @@ int osc_message_handler(const char *path, const char *types, lo_arg **argv,
 
     } else if (!strcmp(method, "program") && argc == 2 && !strcmp(types, "ii")) {
 
+	if (send_to_ui) {
+	    lo_send(instance->uiTarget, instance->ui_osc_program_path, "ii",
+		    argv[0]->i, argv[1]->i);
+	}
+	
         return osc_program_handler(instance, argv);
 
     } else if (!strcmp(method, "update") && argc == 1 && !strcmp(types, "s")) {
 
-        return osc_update_handler(instance, argv);
+        return osc_update_handler(instance, argv, source);
 
     } else if (!strcmp(method, "exiting") && argc == 0) {
 
