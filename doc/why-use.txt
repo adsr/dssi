@@ -72,12 +72,16 @@ want to make it a DSSI plugin.
    events.
 
    Source code to a number of plugins is available to serve as
-   examples or bases for new efforts, including the simplest-
-   possible monophonic synth, straightforward polyphonic synth, and
-   monotimbral samplers of the DSSI distribution itself, plus analog
-   and FM synths (Xsynth-DSSI and hexter) and a FluidSynth wrapper
-   (FluidSynth-DSSI). Most of these plugins include GUIs, with Qt
-   and GTK examples available.
+   examples or bases for new efforts. The DSSI distribution itself
+   contains several plugins, including the simplest-possible
+   monophonic synth, a straightforward polyphonic synth, and
+   monotimbral samplers. Also available are several softsynths
+   (Xsynth-DSSI, hexter, Sineshaper, WhySynth), a FluidSynth wrapper
+   (FluidSynth-DSSI), a DSSI-to-VST bridge (dssi-vst), an X-Y
+   controller GUI (xy-controller-dssi), a libconvolve wrapper
+   (dssi_convolve), and an oscilloscope (ll-scope) which
+   demonstrates shared memory use between plugin and UI. Most of
+   these plugins include GUIs, with Qt and GTK examples available.
 
  * Clear host-neutral specification
 

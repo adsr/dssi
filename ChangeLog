@@ -1,3 +1,15 @@
+20051006 CVS commit smbolton
+
+ * Added an '-a' option to jack-dssi-host, to disable automatic
+     connection of audio output ports to JACK physical output ports.
+
+ * Updated why-use.txt to reflect currently available plugins.
+
+20050723 CVS commit cannam
+
+ * jack-dssi-host: send updates out to UI if received from
+     elsewhere.
+
 20050525 CVS commit smbolton
 
  * Version bump to 0.9.1.
@@ -11,11 +23,16 @@
  * Conditionally omit the ALSA sequencer client code from
      jack-dssi-host.c if building on a system without ALSA.
 
+ * Updated documentation to reflect FluidSynth-DSSI move and
+     autotools build system.
+
 20050516 CVS commit smbolton
 
- * moved FluidSynth-DSSI to its own separate CVS module.
+ * Moved FluidSynth-DSSI to its own separate CVS module.
 
 Summary of changes, version 0.9 (20041103) through 20050510
+
+ * Numerous clarifications in the documentation.
 
  * Fixed less_trivial_synth.c for use on big-endian systems.
 

@@ -105,6 +105,7 @@ static sigset_t _signals;
 
 int exiting = 0;
 static int verbose = 0;
+static int autoconnect = 1;
 static int load_guis = 1;
 const char *myName = NULL;
 
@@ -778,9 +779,10 @@ main(int argc, char **argv)
     /* Parse args and report usage */
 
     if (argc < 2) {
-	fprintf(stderr, "\nUsage: %s [-v] [-n] [-p <projdir>] [-<i>] <libname>[%c<label>] [...]\n", argv[0], LABEL_SEP);
+	fprintf(stderr, "\nUsage: %s [-v] [-a] [-n] [-p <projdir>] [-<i>] <libname>[%c<label>] [...]\n", argv[0], LABEL_SEP);
 	fprintf(stderr, "\n  -v        Verbose mode\n");
-	fprintf(stderr, "  -n        No GUIs\n");
+	fprintf(stderr, "  -a        Don't autoconnect outputs to JACK physical outputs\n");
+	fprintf(stderr, "  -n        Don't automatically start plugin GUIs\n");
 	fprintf(stderr, "  <projdir> Project directory to pass to plugin and UI\n");
 	fprintf(stderr, "  <i>       Number of instances of each plugin to run (max %d total, default 1)\n", D3H_MAX_INSTANCES);
 	fprintf(stderr, "  <libname> DSSI plugin library .so to load (searched for in $DSSI_PATH)\n");
@@ -803,6 +805,10 @@ main(int argc, char **argv)
 
 	if (!strcmp(argv[i], "-v")) {
 	    verbose = 1;
+	    continue;
+	}
+	if (!strcmp(argv[i], "-a")) {
+	    autoconnect = 0;
 	    continue;
 	}
 	if (!strcmp(argv[i], "-n")) {
@@ -1320,24 +1326,26 @@ main(int argc, char **argv)
 
     mb_init("host: ");
 
+    /* activate JACK and connect ports */
     if (jack_activate(jackClient)) {
         fprintf (stderr, "cannot activate jack client");
         exit(1);
     }
 
-    /* activate JACK and connect ports */
-    /* !FIX! this to more intelligently connect ports: */
-    ports = jack_get_ports(jackClient, NULL, NULL,
-                           JackPortIsPhysical|JackPortIsInput);
-    if (ports && ports[0]) {
-        for (i = 0, j = 0; i < outsTotal; ++i) {
-            if (jack_connect(jackClient, jack_port_name(outputPorts[i]),
-                             ports[j])) {
-                fprintf (stderr, "cannot connect output port %d\n", i);
+    if (autoconnect) {
+        /* !FIX! this to more intelligently connect ports: */
+        ports = jack_get_ports(jackClient, NULL, NULL,
+                               JackPortIsPhysical|JackPortIsInput);
+        if (ports && ports[0]) {
+            for (i = 0, j = 0; i < outsTotal; ++i) {
+                if (jack_connect(jackClient, jack_port_name(outputPorts[i]),
+                                 ports[j])) {
+                    fprintf (stderr, "cannot connect output port %d\n", i);
+                }
+                if (!ports[++j]) j = 0;
             }
-            if (!ports[++j]) j = 0;
+            free(ports);
         }
-        free(ports);
     }
 
     signal(SIGINT, signalHandler);
