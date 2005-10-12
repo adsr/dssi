@@ -646,7 +646,7 @@ startGUI(const char *directory, const char *dllName, const char *label,
 		}
 		
 		if (fork() == 0) {
-		    execlp(filename, filename, oscUrl, dllName, label, instanceTag, 0);
+		    execlp(filename, filename, oscUrl, dllName, label, instanceTag, NULL);
 		    perror("exec failed");
 		    exit(1);
 		}

@@ -5,7 +5,6 @@
  */
 
 #include <unistd.h>
-#include <libgen.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -14,9 +13,20 @@
 static volatile int done = 0;
 
 int update_handler(const char *path, const char *types, lo_arg **argv,
-                    int argc, void *data, void *user_data)
+                   int argc, lo_message msg, void *user_data)
 {
-    printf("port %d = %f\n", argv[0]->i, argv[1]->f);
+    int i;
+
+    if (argc) {
+        printf("%s:", path);
+        for (i = 0; i < argc; ++i) {
+            printf(" ");
+            lo_arg_pp((lo_type)types[i], argv[i]);
+        }
+        printf("\n");
+    } else {
+        printf("%s", path);
+    }
 
     return 0;
 }
@@ -32,8 +42,7 @@ int main(int argc, char *argv[])
     lo_server_thread st;
     lo_address a;
     char *host, *port, *path;
-    char full_path[256];
-    char *my_url = "osc://localhost:4445/";
+    char update_path[256], *tmp_url, my_url[256];
 
     if (argc != 2) {
 	fprintf(stderr, "usage: %s <osc url>\n", argv[0]);
@@ -45,23 +54,25 @@ int main(int argc, char *argv[])
     path = lo_url_get_path(argv[1]);
     a = lo_address_new(host, port);
 
-    snprintf(full_path, 255, "%s/update", path);
+    snprintf(update_path, 255, "%s/update", path);
 
-    st = lo_server_thread_new("4445", NULL);
-    lo_server_thread_add_method(st, path, "if", update_handler,
-				osc_error);
+    st = lo_server_thread_new(NULL, osc_error);
+    tmp_url = lo_server_thread_get_url(st);
+    snprintf(my_url, 255, "%s%s", tmp_url, (strlen(path) > 1 ? path + 1 : path));
+    free(tmp_url);
+    lo_server_thread_add_method(st, NULL, NULL, update_handler, NULL);
     lo_server_thread_start(st);
 
-    printf("sending osc.udp://%s:%s%s \"%s\"\n", host, port, full_path, my_url);
-    lo_send(a, full_path, "s", my_url);
+    printf("sending osc.udp://%s:%s%s \"%s\"\n", host, port, update_path, my_url);
+    lo_send(a, update_path, "s", my_url);
     free(host);
     free(port);
     free(path);
 
-    /* quit if we go 1 second without an OSC update message */
+    /* quit if we go 5 seconds without an OSC update message */
     while (!done) {
 	done = 1;
-	sleep(100);
+	sleep(5);
     }
 
     return 0;

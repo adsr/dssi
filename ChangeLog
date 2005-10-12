@@ -1,3 +1,9 @@
+20051012 CVS commit and 0.9.1 release, smbolton
+
+ * Updated examples/dssi_osc_update.c so it works again.
+
+ * jack-dssi-host: upstreamed gcc4 fix from Gentoo ebuild.
+
 20051006 CVS commit smbolton
 
  * Added an '-a' option to jack-dssi-host, to disable automatic
