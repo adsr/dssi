@@ -17,9 +17,9 @@ dssi_osc_update_LDADD = $(AM_LDFLAGS) $(LIBLO_LIBS)
 plugindir = $(libdir)/dssi
 
 if BUILD_SAMPLER
-plugin_LTLIBRARIES = trivial_synth.la less_trivial_synth.la trivial_sampler.la
+plugin_LTLIBRARIES = trivial_synth.la less_trivial_synth.la trivial_sampler.la karplong.la
 else
-plugin_LTLIBRARIES = trivial_synth.la less_trivial_synth.la
+plugin_LTLIBRARIES = trivial_synth.la less_trivial_synth.la karplong.la
 endif
 
 trivial_synth_la_SOURCES = \
@@ -36,20 +36,27 @@ trivial_sampler_la_SOURCES = \
 	trivial_sampler.h \
 	../dssi/dssi.h
 
+karplong_la_SOURCES = \
+	karplong.cpp \
+	../dssi/dssi.h
+
 trivial_synth_la_CFLAGS = -I$(top_srcdir)/dssi $(AM_CFLAGS) $(ALSA_CFLAGS)
 less_trivial_synth_la_CFLAGS = -I$(top_srcdir)/dssi $(AM_CFLAGS) $(ALSA_CFLAGS)
 trivial_sampler_la_CFLAGS = -I$(top_srcdir)/dssi $(AM_CFLAGS) $(ALSA_CFLAGS) $(SNDFILE_CFLAGS) $(SRC_CFLAGS)
+karplong_la_CFLAGS = -I$(top_srcdir)/dssi $(AM_CFLAGS) $(ALSA_CFLAGS) $(SRC_CFLAGS) -g3 -O0
 
 if DARWIN
 trivial_synth_la_LDFLAGS = -module -avoid-version
 less_trivial_synth_la_LDFLAGS = -module -avoid-version
 less_trivial_synth_la_LIBADD = -lm -lmx
 trivial_sampler_la_LDFLAGS = -module -avoid-version
+karplong_la_LDFLAGS = -module -avoid-version
 else
 trivial_synth_la_LDFLAGS = -module -avoid-version -Wc,-nostartfiles
 less_trivial_synth_la_LDFLAGS = -module -avoid-version -Wc,-nostartfiles
 less_trivial_synth_la_LIBADD = -lm
 trivial_sampler_la_LDFLAGS = -module -avoid-version -Wc,-nostartfiles
+karplong_la_LDFLAGS = -module -avoid-version -Wc,-nostartfiles
 endif
 
 trivial_sampler_la_LIBADD = -lpthread $(SNDFILE_LIBS) $(SRC_LIBS)

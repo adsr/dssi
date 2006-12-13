@@ -26,6 +26,8 @@ You'll find here:
   examples/less_trivial_synth_qt_gui.cpp -- a very simple Qt GUI
   for the above
 
+  examples/karplong.cpp -- a simple Karplus+Strong plucked string synth
+
   examples/trivial_sampler.c -- a simple one-sample polyphonic
   mono sampler (that doesn't do proper pitch scaling)
 
