@@ -393,7 +393,11 @@ int pick_voice(const voice_data *data)
     return highest_note_voice;
 }
 
+#ifdef __GNUC__
+__attribute__((constructor)) void init()
+#else
 void _init()
+#endif
 {
     unsigned int i;
     char **port_names;
@@ -520,7 +524,11 @@ void _init()
     }
 }
 
+#ifdef __GNUC__
+__attribute__((destructor)) void fini()
+#else
 void _fini()
+#endif
 {
     if (ltsLDescriptor) {
 	free((LADSPA_PortDescriptor *) ltsLDescriptor->PortDescriptors);

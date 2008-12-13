@@ -190,7 +190,11 @@ int getControllerTS(LADSPA_Handle instance, unsigned long port)
     return -1;
 }
 
+#ifdef __GNUC__
+__attribute__((constructor)) void init()
+#else
 void _init()
+#endif
 {
     char **port_names;
     LADSPA_PortDescriptor *port_descriptors;
@@ -269,7 +273,11 @@ void _init()
     }
 }
 
+#ifdef __GNUC__
+__attribute__((destructor)) void fini()
+#else
 void _fini()
+#endif
 {
     if (tsLDescriptor) {
 	free((LADSPA_PortDescriptor *) tsLDescriptor->PortDescriptors);

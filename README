@@ -43,7 +43,7 @@ needed to compile DSSI applications, you only need the following:
 
   pkgconfig with PKG_CONFIG_PATH set appropriately
   ALSA 0.9/1.0.x (or libdssialsacompat: see
-      http://home.jps.net/~musound)
+      http://smbolton.com/linux.html)
   LADSPA SDK 1.x
 
 To build the included host and plugins, you will also need:

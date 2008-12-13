@@ -6,8 +6,7 @@
  *
  * This is a host for DSSI plugins.  It listens for MIDI events on an
  * ALSA sequencer port, delivers them to DSSI synths and outputs the
- * result via JACK.  It does not currently support audio input (e.g.
- * for DSSI effects plugins).
+ * result via JACK.
  *
  * This program expects the names of up to 16 DSSI synth plugins, in
  * the form '<dll-name>:<label>',* to be provided on the command line.
@@ -21,7 +20,7 @@
  */
 
 /*
- * Copyright 2004 Chris Cannam, Steve Harris and Sean Bolton.
+ * Copyright 2004, 2008 Chris Cannam, Steve Harris and Sean Bolton.
  * 
  * Permission to use, copy, modify, distribute, and sell this software
  * for any purpose is hereby granted without fee, provided that the
@@ -737,6 +736,7 @@ main(int argc, char **argv)
     int i, reps, j;
     int in, out, controlIn, controlOut;
     char clientName[33];
+    jack_status_t status;
 
     setsid();
     sigemptyset (&_signals);
@@ -1065,16 +1065,14 @@ main(int argc, char **argv)
 	clientName[32] = '\0';
     }
 
-    if ((jackClient = jack_client_new(clientName)) == 0) {
-
-	clientName[22] = '\0';
-	sprintf(clientName + strlen(clientName), " (%d)", (int)getpid());
-
-	if ((jackClient = jack_client_new(clientName)) == 0) {
-	    fprintf(stderr, "\n%s: Error: Failed to connect to JACK server\n",
-		myName);
-	    return 1;
-	}
+    if ((jackClient = jack_client_open(clientName, 0, &status)) == 0) {
+        fprintf(stderr, "\n%s: Error: Failed to connect to JACK server\n",
+            myName);
+        return 1;
+    }
+    if (status & JackNameNotUnique) {
+        strncpy(clientName, jack_get_client_name(jackClient), 32);
+	clientName[32] = '\0';
     }
 
     sample_rate = jack_get_sample_rate(jackClient);
@@ -1334,7 +1332,8 @@ main(int argc, char **argv)
 
     if (autoconnect) {
         /* !FIX! this to more intelligently connect ports: */
-        ports = jack_get_ports(jackClient, NULL, NULL,
+        ports = jack_get_ports(jackClient, NULL,
+                               "^" JACK_DEFAULT_AUDIO_TYPE "$",
                                JackPortIsPhysical|JackPortIsInput);
         if (ports && ports[0]) {
             for (i = 0, j = 0; i < outsTotal; ++i) {

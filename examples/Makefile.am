@@ -45,18 +45,14 @@ less_trivial_synth_la_CFLAGS = -I$(top_srcdir)/dssi $(AM_CFLAGS) $(ALSA_CFLAGS)
 trivial_sampler_la_CFLAGS = -I$(top_srcdir)/dssi $(AM_CFLAGS) $(ALSA_CFLAGS) $(SNDFILE_CFLAGS) $(SRC_CFLAGS)
 karplong_la_CFLAGS = -I$(top_srcdir)/dssi $(AM_CFLAGS) $(ALSA_CFLAGS) $(SRC_CFLAGS) -g3 -O0
 
-if DARWIN
 trivial_synth_la_LDFLAGS = -module -avoid-version
 less_trivial_synth_la_LDFLAGS = -module -avoid-version
-less_trivial_synth_la_LIBADD = -lm -lmx
 trivial_sampler_la_LDFLAGS = -module -avoid-version
 karplong_la_LDFLAGS = -module -avoid-version
+if DARWIN
+less_trivial_synth_la_LIBADD = -lm -lmx
 else
-trivial_synth_la_LDFLAGS = -module -avoid-version -Wc,-nostartfiles
-less_trivial_synth_la_LDFLAGS = -module -avoid-version -Wc,-nostartfiles
 less_trivial_synth_la_LIBADD = -lm
-trivial_sampler_la_LDFLAGS = -module -avoid-version -Wc,-nostartfiles
-karplong_la_LDFLAGS = -module -avoid-version -Wc,-nostartfiles
 endif
 
 trivial_sampler_la_LIBADD = -lpthread $(SNDFILE_LIBS) $(SRC_LIBS)

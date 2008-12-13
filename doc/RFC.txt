@@ -345,17 +345,18 @@ can be obtained from
 Note that liblo is distributed under a different licence from DSSI and
 so might not be a legal option for certain DSSI implementations.
 
-DSSI uses OSC in both directions between the host and UI.  When a user
-changes a port value in the UI, it sends an OSC request to the host,
-which informs the plugin of the change; when an automated port change
-occurs in the host, or a plugin's output control port changes, the
-host sends an update to the UI.
+DSSI uses OSC in both directions between the host and UI.  When a
+user changes a configure, program, or port value in the UI, it sends
+an OSC request to the host, which informs the plugin of the change;
+when an automated change occurs in the host, or a plugin's output
+control port changes, the host sends an update to the UI.
 
-(The host does not send updates to the UI for port changes that the UI
-itself initiated; likewise the UI must not send port changes back to
-the host that the host itself initiated.  A host that supports
-multiple UIs per plugin instance should send each change to all UIs
-for the instance other than the UI that initiated it.)
+(The host does not send updates to the UI for configure, program, or
+port changes that the UI itself initiated; likewise the UI must not
+send changes back to the host that the host itself initiated.  A
+host that supports multiple UIs per plugin instance should send each
+change to all UIs for the instance other than the UI that initiated
+it.)
 
 Communications between the host and UI are deliberately as limited as
 possible.  There is, for example, no way for a UI to query the
@@ -373,13 +374,13 @@ For a typical graphical host, trying to start a GUI for a plugin
 labelled PLUGIN found in a dll named MYPLUGINS.so in directory
 DIRECTORY, we would recommend as follows.
 
-The host looks for a directory DIRECTORY/PLUGINS/.  If found, it looks
-for executable files or symbolic links in that directory beginning
-with the string PLUGIN or MYPLUGINS and ending with a suffix separated
-by an underscore, e.g. PLUGIN_gui, MYPLUGINS_qt.  If nothing so named
-is found, it should conclude that there is no suitable UI for this
-plugin (i.e. files with no underscores in their names should not be
-used -- this permits the plugin UI author to include supporting or
+The host looks for a directory DIRECTORY/MYPLUGINS/.  If found, it
+looks for executable files or symbolic links in that directory
+beginning with the string PLUGIN or MYPLUGINS and ending with a suffix
+separated by an underscore, e.g. PLUGIN_gui, MYPLUGINS_qt.  If nothing
+so named is found, it should conclude that there is no suitable UI for
+this plugin (i.e. files with no underscores in their names should not
+be used -- this permits the plugin UI author to include supporting or
 config files in the same directory).  Otherwise, the host should
 select from among the results according to suffix: for a Qt
 application prefer things ending in _qt, for GTK prefer _gtk, etc; as
@@ -399,12 +400,15 @@ MYPLUGINS.so.
 Once the host has found a suitable executable, it then starts it with
 a command line consisting of:
 
-  * the executable name in argv[0] as normal
+  * the executable name in argv[0] as normal (including the full path,
+    so that the UI may locate either the MYPLUGINS.so or supporting
+    files in the MYPLUGINS subdirectory, if need be.)
 
   * the OSC URL for the host, identifying the host and the base path
     for the correct plugin instance (see Paths and Methods below)
 
-  * the name of the .so in which the plugin was found (here PLUGINS.so)
+  * the name of the .so in which the plugin was found (here
+    MYPLUGINS.so)
 
   * the label of the plugin (here PLUGIN).
 
@@ -428,8 +432,8 @@ called -- and a sequence of typed arguments.
 The DSSI host and UI are each expected to think of an arbitrary path
 to associate with each plugin instance, known as the "base path".
 This will presumably have some internal and/or diagnostic meaning:
-e.g. a host might use "/dssi/PLUGINS/PLUGIN.1" for the path to the
-first instance of plugin labelled PLUGIN in PLUGINS.so.  Individual
+e.g. a host might use "/dssi/MYPLUGINS/PLUGIN.1" for the path to the
+first instance of plugin labelled PLUGIN in MYPLUGINS.so.  Individual
 method calls are always made to a subpath of the base path, as
 detailed below.
 
@@ -439,7 +443,7 @@ update call.
 
 These are the methods the host may support:
 
- * <base path>/control  (e.g. "/dssi/PLUGINS/PLUGIN.1/control")
+ * <base path>/control  (e.g. "/dssi/MYPLUGINS/PLUGIN.1/control")
 
    Set a control port value on the plugin at <base path>.  Takes an int
    argument for port number and a float for value.  (required method)

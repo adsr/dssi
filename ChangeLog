@@ -1,3 +1,26 @@
+20081212 CVS commit smbolton
+
+ * jack-dssi-host: changed to use jack_client_open() instead of
+     deprecated jack_client_new() (requires jack >=0.99.14).
+
+ * jack-dssi-host: fixed audio output port connection to avoid
+     JACK MIDI ports.
+
+ * Example plugins: use gcc/glibc 'constructor' and 'destructor'
+     attributes instead of the deprecated _init() and _fini()
+     functions (needed for OS X 10.4 'Tiger').
+
+ * Multiple clarifications in RFC.txt: configure, program, and
+     control OSC messages are not echoed back to the originator;
+     argv[0] supplied to the UI should include the full path (all
+     existing hosts do this, to the best of my knowledge);
+     eliminated some inconsistency between use of 'PLUGINS' and
+     'MYPLUGINS' in examples.
+
+20061213 CVS commit cannam
+
+ * Add another simple example -- the basic Karplus and Strong synth.
+
 20051012 CVS commit and 0.9.1 release, smbolton
 
  * Updated examples/dssi_osc_update.c so it works again.

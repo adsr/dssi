@@ -8,7 +8,6 @@ AM_CONFIG_HEADER(config.h)
 
 AC_PROG_CC
 AC_PROG_CXX
-AC_HEADER_STDC
 AC_ENABLE_STATIC(no)
 AC_ENABLE_SHARED(yes)
 AC_PROG_LIBTOOL
@@ -35,7 +34,7 @@ AC_SUBST(LIBLO_LIBS)
 AM_CONDITIONAL(HAVE_LIBLO, test x$with_liblo = xyes)
 
 dnl Check for JACK
-PKG_CHECK_MODULES(JACK, jack, with_jack=yes, with_jack=no)
+PKG_CHECK_MODULES(JACK, jack >= 0.99.14, with_jack=yes, with_jack=no)
 AC_SUBST(JACK_CFLAGS)
 AC_SUBST(JACK_LIBS)
 AM_CONDITIONAL(HAVE_JACK, test x$with_jack = xyes)

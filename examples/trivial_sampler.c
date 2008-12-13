@@ -507,7 +507,11 @@ char *samplerConfigure(LADSPA_Handle instance, const char *key, const char *valu
     return strdup("error: unrecognized configure key");
 }
 
+#ifdef __GNUC__
+__attribute__((constructor)) void init()
+#else
 void _init()
+#endif
 {
     char **port_names;
     LADSPA_PortDescriptor *port_descriptors;
@@ -647,7 +651,11 @@ void _init()
     samplerStereoDDescriptor->run_multiple_synths_adding = NULL;
 }
 
+#ifdef __GNUC__
+__attribute__((destructor)) void fini()
+#else
 void _fini()
+#endif
 {
     if (samplerMonoLDescriptor) {
 	free((LADSPA_PortDescriptor *) samplerMonoLDescriptor->PortDescriptors);
