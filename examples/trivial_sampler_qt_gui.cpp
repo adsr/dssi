@@ -21,6 +21,7 @@
 #include <qpixmap.h>
 #include <qpainter.h>
 #include <qgroupbox.h>
+#include <cstdlib>
 #include <iostream>
 #include <unistd.h>
 #include <math.h>
