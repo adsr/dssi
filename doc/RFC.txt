@@ -420,9 +420,9 @@ a command line consisting of:
 If the UI supports the show/hide mechanism (which any graphical UI
 should), then it should initially be in hidden state.  The UI then
 requests an update, passing its own OSC URL and base path to the host;
-the host responds by sending the current configure, program and
-control values (in that order).  The host must then call show() on the
-UI and startup is complete.
+the host responds by sending the sample rate and current configure,
+program and control values (in that order).  The host must then call
+show() on the UI and startup is complete.
 
 Paths and Methods
 ~~~~~~~~~~~~~~~~~
@@ -457,9 +457,9 @@ These are the methods the host may support:
 
    Request an update on the UI.  Takes one string argument, the UI's
    own OSC URL with base path.  The host should respond by sending the
-   current state of the plugin to the UI in a series of configure,
-   program, and control OSC calls.  (required method, and the UI is
-   required to use it)
+   current state of the plugin to the UI in a series of sample-rate,
+   configure, program, and control OSC calls.  (required method, and
+   the UI is required to use it)
 
  * <base path>/configure
 
@@ -508,6 +508,12 @@ And these are the methods the UI may support:
    once for each piece of configuration data following the UI's
    update() request, e.g. on startup.  Takes two string arguments for
    key and value.  (required method)
+
+ * <base path>/sample-rate
+
+   Inform the UI of the sample rate at which the plugin is being run.
+   Takes an int argument for the rate, in frames per second.  (optional
+   method)
 
  * <base path>/show
 

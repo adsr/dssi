@@ -10,7 +10,7 @@
  */
 
 /*
- * Copyright 2004 Chris Cannam, Steve Harris and Sean Bolton.
+ * Copyright 2004, 2008 Chris Cannam, Steve Harris and Sean Bolton.
  * 
  * Permission to use, copy, modify, distribute, and sell this software
  * for any purpose is hereby granted without fee, provided that the
@@ -87,6 +87,7 @@ struct _d3h_instance_t {
     char            *ui_osc_configure_path;
     char            *ui_osc_program_path;
     char            *ui_osc_quit_path;
+    char            *ui_osc_rate_path;
     char            *ui_osc_show_path;
 };
 

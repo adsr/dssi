@@ -1016,6 +1016,7 @@ main(int argc, char **argv)
                 instance->ui_osc_control_path = NULL;
                 instance->ui_osc_program_path = NULL;
                 instance->ui_osc_quit_path = NULL;
+                instance->ui_osc_rate_path = NULL;
                 instance->ui_osc_show_path = NULL;
 
                 insTotal += plugin->ins;
@@ -1758,11 +1759,18 @@ osc_update_handler(d3h_instance_t *instance, lo_arg **argv, lo_address source)
     instance->ui_osc_quit_path = (char *)malloc(strlen(path) + 10);
     sprintf(instance->ui_osc_quit_path, "%s/quit", path);
 
+    if (instance->ui_osc_rate_path) free(instance->ui_osc_rate_path);
+    instance->ui_osc_rate_path = (char *)malloc(strlen(path) + 13);
+    sprintf(instance->ui_osc_rate_path, "%s/sample-rate", path);
+
     if (instance->ui_osc_show_path) free(instance->ui_osc_show_path);
     instance->ui_osc_show_path = (char *)malloc(strlen(path) + 10);
     sprintf(instance->ui_osc_show_path, "%s/show", path);
 
     free((char *)path);
+
+    /* Send sample rate */
+    lo_send(instance->uiTarget, instance->ui_osc_rate_path, "i", lrintf(sample_rate));
 
     /* At this point a more substantial host might also call
      * configure() on the UI to set any state that it had remembered

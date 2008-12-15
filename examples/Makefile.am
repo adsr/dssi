@@ -43,7 +43,7 @@ karplong_la_SOURCES = \
 trivial_synth_la_CFLAGS = -I$(top_srcdir)/dssi $(AM_CFLAGS) $(ALSA_CFLAGS)
 less_trivial_synth_la_CFLAGS = -I$(top_srcdir)/dssi $(AM_CFLAGS) $(ALSA_CFLAGS)
 trivial_sampler_la_CFLAGS = -I$(top_srcdir)/dssi $(AM_CFLAGS) $(ALSA_CFLAGS) $(SNDFILE_CFLAGS) $(SRC_CFLAGS)
-karplong_la_CFLAGS = -I$(top_srcdir)/dssi $(AM_CFLAGS) $(ALSA_CFLAGS) $(SRC_CFLAGS) -g3 -O0
+karplong_la_CXXFLAGS = -I$(top_srcdir)/dssi $(AM_CFLAGS) $(ALSA_CFLAGS)
 
 trivial_synth_la_LDFLAGS = -module -avoid-version
 less_trivial_synth_la_LDFLAGS = -module -avoid-version
@@ -124,6 +124,9 @@ install-exec-hook:
 	  fi ; \
 	  if ! test -x ./trivial_sampler$(EXEEXT) ; then \
 	    $(LN_S) jack-dssi-host$(EXEEXT) trivial_sampler$(EXEEXT) ; \
+	  fi ; \
+	  if ! test -x ./karplong$(EXEEXT) ; then \
+	    $(LN_S) jack-dssi-host$(EXEEXT) karplong$(EXEEXT) ; \
 	  fi ; \
 	fi
 

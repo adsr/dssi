@@ -181,6 +181,7 @@ else
 fi
 echo "* building trivial_synth plugin:      yes"
 echo "* building less_trivial_synth plugin: yes"
+echo "* building karplong plugin:           yes"
 if test -z "$trivial_sampler_needs" ; then
     echo "* building trivial_sampler plugin:    yes"
 else

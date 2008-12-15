@@ -516,6 +516,13 @@ configure_handler(const char *path, const char *types, lo_arg **argv,
 }
 
 int
+rate_handler(const char *path, const char *types, lo_arg **argv,
+	     int argc, void *data, void *user_data)
+{
+    return 0;
+}
+
+int
 show_handler(const char *path, const char *types, lo_arg **argv,
 	     int argc, void *data, void *user_data)
 {
@@ -642,6 +649,7 @@ main(int argc, char **argv)
 
     QString myControlPath = QString("%1/control").arg(path);
     QString myConfigurePath = QString("%1/configure").arg(path);
+    QString myRatePath = QString("%1/sample-rate").arg(path);
     QString myShowPath = QString("%1/show").arg(path);
     QString myHidePath = QString("%1/hide").arg(path);
     QString myQuitPath = QString("%1/quit").arg(path);
@@ -649,6 +657,7 @@ main(int argc, char **argv)
     osc_server = lo_server_new(NULL, osc_error);
     lo_server_add_method(osc_server, myControlPath, "if", control_handler, &gui);
     lo_server_add_method(osc_server, myConfigurePath, "ss", configure_handler, &gui);
+    lo_server_add_method(osc_server, myRatePath, "i", rate_handler, &gui);
     lo_server_add_method(osc_server, myShowPath, "", show_handler, &gui);
     lo_server_add_method(osc_server, myHidePath, "", hide_handler, &gui);
     lo_server_add_method(osc_server, myQuitPath, "", quit_handler, &gui);

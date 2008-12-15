@@ -1,3 +1,8 @@
+20081214 CVS commit smbolton
+
+ * Implemented the 'sample-rate' OSC method in both jack-dssi-host
+     and the example plugins, and described it in RFC.txt. 
+
 20081212 CVS commit smbolton
 
  * jack-dssi-host: changed to use jack_client_open() instead of
