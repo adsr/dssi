@@ -1,3 +1,9 @@
+20090109 CVS commit and 1.0.0 release, smbolton
+
+ * Added manpages (thanks to Mark Hymers and Debian!)
+ * Freshening URLs, etc., for 2009.
+ * Small dssi_osc_update fixes.
+
 20081214 CVS commit smbolton
 
  * Implemented the 'sample-rate' OSC method in both jack-dssi-host

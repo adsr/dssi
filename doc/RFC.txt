@@ -4,7 +4,7 @@ DSSI
 ====
 
 An API for soft synth plugins with custom user interfaces.
-Version 0.9.
+Version 1.0.
 
 
 Summary
@@ -340,7 +340,7 @@ transport (OSC itself is transport-independent).  The example code
 uses an implementation by Steve Harris called liblo ("Lite OSC") which
 can be obtained from
 
-  <URL:http://www.plugin.org.uk/liblo/>
+  <URL:http://liblo.sourceforge.net/>
 
 Note that liblo is distributed under a different licence from DSSI and
 so might not be a legal option for certain DSSI implementations.

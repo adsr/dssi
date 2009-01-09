@@ -25,8 +25,9 @@ int update_handler(const char *path, const char *types, lo_arg **argv,
         }
         printf("\n");
     } else {
-        printf("%s", path);
+        printf("%s\n", path);
     }
+    done = 0;
 
     return 0;
 }
@@ -69,10 +70,10 @@ int main(int argc, char *argv[])
     free(port);
     free(path);
 
-    /* quit if we go 5 seconds without an OSC update message */
-    while (!done) {
-	done = 1;
-	sleep(5);
+    /* quit if we go 5 seconds without receiving any OSC messages */
+    while (done < 5) {
+	sleep(1);
+	done++;
     }
 
     return 0;

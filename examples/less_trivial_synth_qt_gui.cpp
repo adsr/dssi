@@ -2,7 +2,7 @@
 
 /* less_trivial_synth_qt_gui.cpp
 
-   Disposable Hosted Soft Synth API
+   DSSI Soft Synth Interface
    Constructed by Chris Cannam and Steve Harris
 
    This is an example Qt GUI for an example DSSI synth plugin.

@@ -2,7 +2,7 @@
 
 /* trivial_sampler_qt_gui.cpp
 
-   Disposable Hosted Soft Synth API
+   DSSI Soft Synth Interface
    Constructed by Chris Cannam, Steve Harris and Sean Bolton
 
    A straightforward DSSI plugin sampler: Qt GUI.

@@ -2,8 +2,8 @@
 
 /* dssi.h
 
-   DSSI version 0.9
-   Copyright (c) 2004 Chris Cannam, Steve Harris and Sean Bolton
+   DSSI version 1.0
+   Copyright (c) 2004, 2009 Chris Cannam, Steve Harris and Sean Bolton
    
    This library is free software; you can redistribute it and/or
    modify it under the terms of the GNU Lesser General Public License
@@ -17,8 +17,8 @@
    
    You should have received a copy of the GNU Lesser General Public
    License along with this library; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
-   USA.
+   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
+   MA  02110-1301  USA
 */
 
 #ifndef DSSI_INCLUDED
@@ -27,9 +27,9 @@
 #include <ladspa.h>
 #include <alsa/seq_event.h>
 
-#define DSSI_VERSION "0.9"
-#define DSSI_VERSION_MAJOR 0
-#define DSSI_VERSION_MINOR 9
+#define DSSI_VERSION "1.0"
+#define DSSI_VERSION_MAJOR 1
+#define DSSI_VERSION_MINOR 0
 
 #ifdef __cplusplus
 extern "C" {
