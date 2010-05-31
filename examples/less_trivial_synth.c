@@ -113,6 +113,7 @@ typedef struct {
     int note2voice[MIDI_NOTES];
     fixp omega[MIDI_NOTES];
     float fs;
+    LADSPA_Data previous_timbre;
 } LTS;
 
 static void runLTS(LADSPA_Handle instance, unsigned long sample_count,
@@ -187,6 +188,7 @@ static LADSPA_Handle instantiateLTS(const LADSPA_Descriptor * descriptor,
     LTS *plugin_data = (LTS *) malloc(sizeof(LTS));
 
     plugin_data->fs = s_rate;
+    plugin_data->previous_timbre = 0.5f;
 
     for (i=0; i<MIDI_NOTES; i++) {
 	plugin_data->omega[i].all =
@@ -234,7 +236,7 @@ static void runLTS(LADSPA_Handle instance, unsigned long sample_count,
     vals.decay = *(plugin_data->decay) * plugin_data->fs;
     vals.sustain = *(plugin_data->sustain) * 0.01f;
     vals.release = *(plugin_data->release) * plugin_data->fs;
-
+    vals.timbre = plugin_data->previous_timbre;
     vals.pitch = plugin_data->pitch;
 
     for (pos = 0, event_pos = 0; pos < sample_count; pos += STEP_SIZE) {
@@ -296,6 +298,7 @@ static void runLTS(LADSPA_Handle instance, unsigned long sample_count,
 	    }
 	}
     }
+    plugin_data->previous_timbre = vals.timbre;
 }
 
 static void run_voice(LTS *p, synth_vals *vals, voice_data *d, LADSPA_Data *out, unsigned int count)

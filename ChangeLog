@@ -1,3 +1,7 @@
+20100530 CVS commit smbolton
+
+ * Fixed an uninitialized variable bug in less_trivial_synth.c.
+
 20090109 CVS commit and 1.0.0 release, smbolton
 
  * Added manpages (thanks to Mark Hymers and Debian!)
