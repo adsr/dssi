@@ -48,59 +48,12 @@ AC_SUBST(SRC_CFLAGS)
 AC_SUBST(SRC_LIBS)
 
 dnl Check for Qt
-AC_MSG_CHECKING([whether QTDIR environment variable is set])
-if test "x${QTDIR}" = x ; then
-  AC_MSG_RESULT([no])
-  AC_MSG_CHECKING([for Qt library])
-  for qq in /usr/lib/qt3 /usr/qt/3 /usr/share/qt /usr/share/qt3 /usr/lib/qt-3.1 /usr/lib/qt31 /usr/local/qt31 /usr/local/qt3 /usr/lib/qt /usr/local/qt
-  do
-    if test "x${QTDIR}" = x -a \( -f $qq/lib/libqt-mt.so -o -f $qq/lib/libqt-mt.a \)
-    then
-      QTDIR=$qq
-    fi
-  done
-  if test "x${QTDIR}" = x ; then
-    with_qt=no
-    AC_MSG_RESULT([none found. Perhaps you need to set QTDIR?])
-  else
-    with_qt=yes
-    AC_MSG_RESULT([found one in $QTDIR/lib])
-  fi
-else
-  AC_MSG_RESULT([$QTDIR])
-  AC_MSG_CHECKING([for Qt library])
-  if test -f $QTDIR/lib/libqt-mt.so -o -f $QTDIR/lib/libqt-mt.a; then
-    with_qt=yes
-    AC_MSG_RESULT([in $QTDIR/lib])
-  else
-    with_qt=no
-    AC_MSG_RESULT([no. Perhaps QTDIR is not set correctly?])
-  fi
-fi
-if test "x${with_qt}" = xyes ; then
-  if test "x${QTINCDIR}" != x ; then
-    QT_CXXFLAGS="-I${QTINCDIR}"
-  else
-    QT_CXXFLAGS="-I${QTDIR}/include"
-  fi
-  if test "x${QTLIBDIR}" != x ; then
-    QT_LIBS="-L${QTLIBDIR} -lqt-mt"
-  else
-    QT_LIBS="-L${QTDIR}/lib -lqt-mt"
-  fi
-  if test "x${MOC}" != x ; then
-    QT_MOC="${MOC}"
-  else
-    QT_MOC="${QTDIR}/bin/moc"
-  fi
-  # dnl Check for Qt moc utility.
-  # AC_PATH_PROG(ac_moc, moc, [no])
-  # if test "x$ac_moc" = "xno"; then
-  #    AC_MSG_ERROR([moc $ac_qtdir_errmsg])
-  # fi
-  # AC_SUBST(ac_moc)
-fi
-AC_SUBST(QT_CXXFLAGS)
+with_qt=no
+PKG_CHECK_MODULES(QT, [QtCore >= 4.0 QtGui >= 4.0],
+    [with_qt=yes
+     QT_MOC=`$PKG_CONFIG --variable=moc_location QtCore`],
+    AC_MSG_WARN([pkg-config could not find Qt >= 4.0]))
+AC_SUBST(QT_CFLAGS)
 AC_SUBST(QT_LIBS)
 AC_SUBST(QT_MOC)
 AM_CONDITIONAL(HAVE_QT, test x$with_qt = xyes)
@@ -153,8 +106,8 @@ if test "x$with_SRC" != xyes ; then
 fi
 AM_CONDITIONAL(BUILD_SAMPLER, test -z "$trivial_sampler_needs")
 if test "x$with_qt" != xyes ; then
-    less_trivial_synth_gui_needs="$less_trivial_synth_gui_needs Qt"
-    trivial_sampler_gui_needs="$trivial_sampler_gui_needs Qt"
+    less_trivial_synth_gui_needs="$less_trivial_synth_gui_needs Qt4"
+    trivial_sampler_gui_needs="$trivial_sampler_gui_needs Qt4"
 fi
 
 AC_OUTPUT([

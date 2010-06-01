@@ -13,14 +13,16 @@
 #include "trivial_sampler_qt_gui.h"
 #include "trivial_sampler.h"
 
-#include <qapplication.h>
-#include <qpushbutton.h>
-#include <qtimer.h>
-#include <qfiledialog.h>
-#include <qmessagebox.h>
-#include <qpixmap.h>
-#include <qpainter.h>
-#include <qgroupbox.h>
+#include <QApplication>
+#include <QDesktopWidget>
+#include <QPushButton>
+#include <QTimer>
+#include <QFileDialog>
+#include <QMessageBox>
+#include <QPixmap>
+#include <QPainter>
+#include <QGroupBox>
+#include <QTextStream>
 #include <cstdlib>
 #include <iostream>
 #include <unistd.h>
@@ -48,16 +50,17 @@ static int handle_x11_error(Display *dpy, XErrorEvent *err)
 }
 #endif
 
-using std::cerr;
 using std::endl;
 
 lo_server osc_server = 0;
 
+static QTextStream cerr(stderr);
+
 #define NO_SAMPLE_TEXT "<none loaded>   "
 
-SamplerGUI::SamplerGUI(bool stereo, QString host, QString port,
-		       QString controlPath, QString midiPath, QString configurePath,
-		       QString exitingPath, QWidget *w) :
+SamplerGUI::SamplerGUI(bool stereo, const char * host, const char * port,
+		       QByteArray controlPath, QByteArray midiPath, QByteArray configurePath,
+		       QByteArray exitingPath, QWidget *w) :
     QFrame(w),
     m_controlPath(controlPath),
     m_midiPath(midiPath),
@@ -71,101 +74,99 @@ SamplerGUI::SamplerGUI(bool stereo, QString host, QString port,
 {
     m_host = lo_address_new(host, port);
 
-    QGridLayout *layout = new QGridLayout(this, 2, 2, 5, 5);
+    QGridLayout *layout = new QGridLayout(this);
     
-    QGroupBox *sampleBox = new QGroupBox(1, Horizontal, "Sample", this);
-    layout->addMultiCellWidget(sampleBox, 0, 0, 0, 1);
+    QGroupBox *sampleBox = new QGroupBox("Sample", this);
+    layout->addWidget(sampleBox, 0, 0, 1, 2);
 
-    QFrame *sampleFrame = new QFrame(sampleBox);
-    QGridLayout *sampleLayout = new QGridLayout(sampleFrame,
-						stereo ? 4 : 3, 5, 5, 5);
+    QGridLayout *sampleLayout = new QGridLayout(sampleBox);
 
-    sampleLayout->addWidget(new QLabel("File:  ", sampleFrame), 0, 0);
+    sampleLayout->addWidget(new QLabel("File:  "), 0, 0);
 
-    m_sampleFile = new QLabel(NO_SAMPLE_TEXT, sampleFrame);
+    m_sampleFile = new QLabel(NO_SAMPLE_TEXT);
     m_sampleFile->setFrameStyle(QFrame::Box | QFrame::Plain);
-    sampleLayout->addMultiCellWidget(m_sampleFile, 0, 0, 1, 3);
+    sampleLayout->addWidget(m_sampleFile, 0, 1, 1, 3);
 
-    m_duration = new QLabel("0.00 sec", sampleFrame);
+    m_duration = new QLabel("0.00 sec");
     sampleLayout->addWidget(m_duration, 2, 1, Qt::AlignLeft);
-    m_sampleRate = new QLabel(sampleFrame);
+    m_sampleRate = new QLabel;
     sampleLayout->addWidget(m_sampleRate, 2, 2, Qt:: AlignCenter);
-    m_channels = new QLabel(sampleFrame);
+    m_channels = new QLabel;
     sampleLayout->addWidget(m_channels, 2, 3, Qt::AlignRight);
 
     QPixmap pmap(m_previewWidth, m_previewHeight);
     pmap.fill();
-    m_preview = new QLabel(sampleFrame);
+    m_preview = new QLabel;
     m_preview->setFrameStyle(QFrame::Box | QFrame::Plain);
     m_preview->setAlignment(Qt::AlignCenter);
-    m_preview->setPaletteBackgroundColor(Qt::white);
     m_preview->setPixmap(pmap);
-    sampleLayout->addMultiCellWidget(m_preview, 1, 1, 1, 3);
+    sampleLayout->addWidget(m_preview, 1, 1, 1, 3);
 
-    QPushButton *loadButton = new QPushButton(" ... ", sampleFrame);
+    QPushButton *loadButton = new QPushButton(" ... ");
     sampleLayout->addWidget(loadButton, 0, 5);
     connect(loadButton, SIGNAL(pressed()), this, SLOT(fileSelect()));
 
-    QPushButton *testButton = new QPushButton("Test", sampleFrame);
+    QPushButton *testButton = new QPushButton("Test");
     connect(testButton, SIGNAL(pressed()), this, SLOT(test_press()));
     connect(testButton, SIGNAL(released()), this, SLOT(test_release()));
     sampleLayout->addWidget(testButton, 1, 5);
 
     if (stereo) {
-	m_balanceLabel = new QLabel("Balance:  ", sampleFrame);
+	m_balanceLabel = new QLabel("Balance:  ");
 	sampleLayout->addWidget(m_balanceLabel, 3, 0);
-	m_balance = new QSlider(-100, 100, 25, 0, Qt::Horizontal, sampleFrame);
+    m_balance = new QSlider();
+    m_balance->setMinimum(-100);
+    m_balance->setMaximum(100);
+    m_balance->setPageStep(25);
+    m_balance->setValue(0);
+    m_balance->setOrientation(Qt::Horizontal);
+    m_balance->setTickPosition(QSlider::TicksBelow);
+    
+    sampleLayout->addWidget(m_balance, 3, 1, 1, 3);
 
-// X11 also defines a numeric constant Below
-#undef Below
-
-	m_balance->setTickmarks(QSlider::Below);
-	sampleLayout->addMultiCellWidget(m_balance, 3, 3, 1, 3);
 	connect(m_balance, SIGNAL(valueChanged(int)), this, SLOT(balanceChanged(int)));
     } else {
 	m_balance = 0;
 	m_balanceLabel = 0;
     }
 
-    QGroupBox *tuneBox = new QGroupBox(1, Horizontal, "Tuned playback", this);
+    QGroupBox *tuneBox = new QGroupBox("Tuned playback");
     layout->addWidget(tuneBox, 1, 0);
     
-    QFrame *tuneFrame = new QFrame(tuneBox);
-    QGridLayout *tuneLayout = new QGridLayout(tuneFrame, 2, 2, 5, 5);
+    QGridLayout *tuneLayout = new QGridLayout(tuneBox);
 
-    m_retune = new QCheckBox("Enable", tuneFrame);
+    m_retune = new QCheckBox("Enable");
     m_retune->setChecked(true);
-    tuneLayout->addMultiCellWidget(m_retune, 0, 0, 0, 1, Qt::AlignLeft);
+    tuneLayout->addWidget(m_retune, 0, 0, Qt::AlignLeft);
     connect(m_retune, SIGNAL(toggled(bool)), this, SLOT(retuneChanged(bool)));
 
-    tuneLayout->addWidget(new QLabel("Base pitch: ", tuneFrame), 1, 0);
+    tuneLayout->addWidget(new QLabel("Base pitch: "), 1, 0);
 
-    m_basePitch = new QSpinBox(tuneFrame);
-    m_basePitch->setMinValue(0);
-    m_basePitch->setMaxValue(120);
+    m_basePitch = new QSpinBox;
+    m_basePitch->setMinimum(0);
+    m_basePitch->setMaximum(120);
     m_basePitch->setValue(60);
     tuneLayout->addWidget(m_basePitch, 1, 1);
     connect(m_basePitch, SIGNAL(valueChanged(int)), this, SLOT(basePitchChanged(int)));
 
-    QGroupBox *noteOffBox = new QGroupBox(1, Horizontal, "Note Off", this);
+    QGroupBox *noteOffBox = new QGroupBox("Note Off");
     layout->addWidget(noteOffBox, 1, 1);
     
-    QFrame *noteOffFrame = new QFrame(noteOffBox);
-    QGridLayout *noteOffLayout = new QGridLayout(noteOffFrame, 2, 2, 5, 5);
+    QGridLayout *noteOffLayout = new QGridLayout(noteOffBox);
 
-    m_sustain = new QCheckBox("Enable", noteOffFrame);
+    m_sustain = new QCheckBox("Enable");
     m_sustain->setChecked(true);
-    noteOffLayout->addMultiCellWidget(m_sustain, 0, 0, 0, 1, Qt::AlignLeft);
+    noteOffLayout->addWidget(m_sustain, 0, 0, Qt::AlignLeft);
     connect(m_sustain, SIGNAL(toggled(bool)), this, SLOT(sustainChanged(bool)));
     
-    noteOffLayout->addWidget(new QLabel("Release: ", noteOffFrame), 1, 0);
-    
-    m_release = new QSpinBox(noteOffFrame);
-    m_release->setMinValue(0);
-    m_release->setMaxValue(int(Sampler_RELEASE_MAX * 1000));
+    noteOffLayout->addWidget(new QLabel("Release: "), 1, 0);
+
+    m_release = new QSpinBox;
+    m_release->setMinimum(0);
+    m_release->setMaximum(int(Sampler_RELEASE_MAX * 1000));
     m_release->setValue(0);
     m_release->setSuffix("ms");
-    m_release->setLineStep(10);
+    m_release->setSingleStep(10);
     noteOffLayout->addWidget(m_release, 1, 1);
     connect(m_release, SIGNAL(valueChanged(int)), this, SLOT(releaseChanged(int)));
 
@@ -180,7 +181,8 @@ SamplerGUI::SamplerGUI(bool stereo, QString host, QString port,
 
     QTimer *myTimer = new QTimer(this);
     connect(myTimer, SIGNAL(timeout()), this, SLOT(oscRecv()));
-    myTimer->start(0, false);
+    myTimer->setSingleShot(false);
+    myTimer->start(0);
 
     m_suppressHostUpdate = false;
 }
@@ -194,7 +196,7 @@ SamplerGUI::generatePreview(QString path)
     pmap.fill();
     
     info.format = 0;
-    file = sf_open(path.latin1(), SFM_READ, &info);
+    file = sf_open(path.toLocal8Bit(), SFM_READ, &info);
 
     if (file && info.frames > 0) {
 
@@ -393,8 +395,8 @@ void
 SamplerGUI::fileSelect()
 {
     QString orig = m_file;
-    if (!orig) {
-	if (m_projectDir) {
+    if (orig.isEmpty()) {
+	if (!m_projectDir.isEmpty()) {
 	    orig = m_projectDir;
 	} else {
 	    orig = ".";
@@ -402,16 +404,15 @@ SamplerGUI::fileSelect()
     }
 
     QString path = QFileDialog::getOpenFileName
-	(orig, "Audio files (*.wav *.aiff)", this, "file select",
-	 "Select an audio sample file");
+        (this, "Select an audio sample file", orig, "Audio files (*.wav *.aiff)");
 
-    if (path) {
+    if (!path.isEmpty()) {
 
 	SF_INFO info;
 	SNDFILE *file;
 
 	info.format = 0;
-	file = sf_open(path, SFM_READ, &info);
+	file = sf_open(path.toLocal8Bit(), SFM_READ, &info);
 
 	if (!file) {
 	    QMessageBox::warning
@@ -430,7 +431,7 @@ SamplerGUI::fileSelect()
 	    return;
 	} else {
 	    sf_close(file);
-	    lo_send(m_host, m_configurePath, "ss", "load", path.latin1());
+	    lo_send(m_host, m_configurePath, "ss", "load", path.toLocal8Bit().data());
 	    setSampleFile(path);
 	}
     }
@@ -507,9 +508,9 @@ configure_handler(const char *path, const char *types, lo_arg **argv,
     const char *value = (const char *)&argv[1]->s;
 
     if (!strcmp(key, "load")) {
-	gui->setSampleFile(value);
+	gui->setSampleFile(QString::fromLocal8Bit(value));
     } else if (!strcmp(key, DSSI_PROJECT_DIRECTORY_KEY)) {
-	gui->setProjectDirectory(value);
+	gui->setProjectDirectory(QString::fromLocal8Bit(value));
     }
 
     return 0;
@@ -633,26 +634,23 @@ main(int argc, char **argv)
 
     char *label = application.argv()[3];
     bool stereo = false;
-    if (QString(label).lower() == QString(Sampler_Stereo_LABEL).lower()) {
+    if (QString(label).toLower() == QString(Sampler_Stereo_LABEL).toLower()) {
 	stereo = true;
     }
 
     SamplerGUI gui(stereo, host, port,
-		   QString("%1/control").arg(path),
-		   QString("%1/midi").arg(path),
-		   QString("%1/configure").arg(path),
-		   QString("%1/exiting").arg(path),
+		   QByteArray(path) + "/control",
+		   QByteArray(path) + "/midi",
+		   QByteArray(path) + "/configure",
+		   QByteArray(path) + "/exiting",
 		   0);
 		 
-    application.setMainWidget(&gui);
-    gui.setCaption(application.argv()[4]);
-
-    QString myControlPath = QString("%1/control").arg(path);
-    QString myConfigurePath = QString("%1/configure").arg(path);
-    QString myRatePath = QString("%1/sample-rate").arg(path);
-    QString myShowPath = QString("%1/show").arg(path);
-    QString myHidePath = QString("%1/hide").arg(path);
-    QString myQuitPath = QString("%1/quit").arg(path);
+    QByteArray myControlPath = QByteArray(path) + "/control";
+    QByteArray myConfigurePath = QByteArray(path) + "/configure";
+    QByteArray myRatePath = QByteArray(path) + "/sample-rate";
+    QByteArray myShowPath = QByteArray(path) + "/show";
+    QByteArray myHidePath = QByteArray(path) + "/hide";
+    QByteArray myQuitPath = QByteArray(path) + "/quit";
 
     osc_server = lo_server_new(NULL, osc_error);
     lo_server_add_method(osc_server, myControlPath, "if", control_handler, &gui);
@@ -665,9 +663,9 @@ main(int argc, char **argv)
 
     lo_address hostaddr = lo_address_new(host, port);
     lo_send(hostaddr,
-	    QString("%1/update").arg(path),
+	    QByteArray(path) + "/update",
 	    "s",
-	    QString("%1%2").arg(lo_server_get_url(osc_server)).arg(path+1).data());
+	    (QByteArray(lo_server_get_url(osc_server)) + QByteArray(path+1)).data());
 
     QObject::connect(&application, SIGNAL(aboutToQuit()), &gui, SLOT(aboutToQuit()));
 

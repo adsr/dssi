@@ -84,7 +84,7 @@ LTS_qt_SOURCES = \
 
 nodist_LTS_qt_SOURCES = $(LTS_MOC)
 
-LTS_qt_CXXFLAGS = $(AM_CXXFLAGS) $(QT_CXXFLAGS) $(LIBLO_CFLAGS)
+LTS_qt_CXXFLAGS = $(AM_CXXFLAGS) $(QT_CFLAGS) $(LIBLO_CFLAGS)
 LTS_qt_LDADD = $(AM_LDFLAGS) $(QT_LIBS) $(LIBLO_LIBS)
 
 trivial_sampler_uidir = $(libdir)/dssi/trivial_sampler
@@ -98,7 +98,7 @@ trivial_sampler_qt_SOURCES = \
 
 nodist_trivial_sampler_qt_SOURCES = $(trivial_sampler_MOC)
 
-trivial_sampler_qt_CXXFLAGS = $(AM_CXXFLAGS) -I$(top_srcdir)/dssi $(ALSA_CFLAGS) $(QT_CXXFLAGS) $(LIBLO_CFLAGS) $(SNDFILE_CFLAGS)
+trivial_sampler_qt_CXXFLAGS = $(AM_CXXFLAGS) -I$(top_srcdir)/dssi $(QT_CFLAGS) $(LIBLO_CFLAGS) $(SNDFILE_CFLAGS)
 trivial_sampler_qt_LDADD = $(AM_LDFLAGS) $(QT_LIBS) $(LIBLO_LIBS) $(SNDFILE_LIBS)
 
 %.moc.cpp: %.h

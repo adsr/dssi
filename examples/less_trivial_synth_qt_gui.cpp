@@ -12,9 +12,10 @@
 
 #include "less_trivial_synth_qt_gui.h"
 
-#include <qapplication.h>
-#include <qpushbutton.h>
-#include <qtimer.h>
+#include <QApplication>
+#include <QPushButton>
+#include <QTextStream>
+#include <QTimer>
 #include <iostream>
 #include <unistd.h>
 
@@ -37,7 +38,6 @@ static int handle_x11_error(Display *dpy, XErrorEvent *err)
 }
 #endif
 
-using std::cerr;
 using std::endl;
 
 #define LTS_PORT_FREQ    1
@@ -49,9 +49,11 @@ using std::endl;
 
 lo_server osc_server = 0;
 
-SynthGUI::SynthGUI(QString host, QString port,
-		   QString controlPath, QString midiPath, QString programPath,
-		   QString exitingPath, QWidget *w) :
+static QTextStream cerr(stderr);
+
+SynthGUI::SynthGUI(const char * host, const char * port,
+		   QByteArray controlPath, QByteArray midiPath, QByteArray programPath,
+		   QByteArray exitingPath, QWidget *w) :
     QFrame(w),
     m_controlPath(controlPath),
     m_midiPath(midiPath),
@@ -63,21 +65,14 @@ SynthGUI::SynthGUI(QString host, QString port,
 {
     m_host = lo_address_new(host, port);
 
-    QGridLayout *layout = new QGridLayout(this, 3, 7, 5, 5);
-    
-    m_tuning  = new QDial(100, 600, 10, 400, this); // (Hz - 400) * 10
-    m_attack  = new QDial(  1, 100,  1,  25, this); // s * 100
-    m_decay   = new QDial(  1, 100,  1,  25, this); // s * 100
-    m_sustain = new QDial(  0, 100,  1,  75, this); // %
-    m_release = new QDial(  1, 400, 10, 200, this); // s * 100
-    m_timbre  = new QDial(  1, 100,  1,  25, this); // s * 100
-    
-    m_tuning ->setNotchesVisible(true);
-    m_attack ->setNotchesVisible(true);
-    m_decay  ->setNotchesVisible(true);
-    m_sustain->setNotchesVisible(true);
-    m_release->setNotchesVisible(true);
-    m_timbre ->setNotchesVisible(true);
+    QGridLayout *layout = new QGridLayout(this);
+        
+    m_tuning  = newQDial(100, 600, 10, 400); // (Hz - 400) * 10
+    m_attack  = newQDial(  1, 100,  1,  25); // s * 100
+    m_decay   = newQDial(  1, 100,  1,  25); // s * 100
+    m_sustain = newQDial(  0, 100,  1,  75); // %
+    m_release = newQDial(  1, 400, 10, 200); // s * 100
+    m_timbre  = newQDial(  1, 100,  1,  25); // s * 100
 
     m_tuningLabel  = new QLabel(this);
     m_attackLabel  = new QLabel(this);
@@ -129,10 +124,12 @@ SynthGUI::SynthGUI(QString host, QString port,
 
     QTimer *myTimer = new QTimer(this);
     connect(myTimer, SIGNAL(timeout()), this, SLOT(oscRecv()));
-    myTimer->start(0, false);
+    myTimer->setSingleShot(false);
+    myTimer->start(0);
 
     m_suppressHostUpdate = false;
 }
+
 
 void
 SynthGUI::setTuning(float hz)
@@ -282,6 +279,19 @@ SynthGUI::aboutToQuit()
 SynthGUI::~SynthGUI()
 {
     lo_address_free(m_host);
+}
+
+
+QDial *
+SynthGUI::newQDial( int minValue, int maxValue, int pageStep, int value )
+{
+    QDial *dial = new QDial( this );
+    dial->setMinimum( minValue );
+    dial->setMaximum( maxValue );
+    dial->setPageStep( pageStep );
+    dial->setValue( value );
+    dial->setNotchesVisible(true);
+    return dial;
 }
 
 
@@ -445,21 +455,19 @@ main(int argc, char **argv)
     char *path = lo_url_get_path(url);
 
     SynthGUI gui(host, port,
-		 QString("%1/control").arg(path),
-		 QString("%1/midi").arg(path),
-		 QString("%1/program").arg(path),
-		 QString("%1/exiting").arg(path),
+		 QByteArray(path) + "/control",
+		 QByteArray(path) + "/midi",
+		 QByteArray(path) + "/program",
+		 QByteArray(path) + "/exiting",
 		 0);
 		 
-    application.setMainWidget(&gui);
-
-    QString myControlPath = QString("%1/control").arg(path);
-    QString myProgramPath = QString("%1/program").arg(path);
-    QString myConfigurePath = QString("%1/configure").arg(path);
-    QString myRatePath = QString("%1/sample-rate").arg(path);
-    QString myShowPath = QString("%1/show").arg(path);
-    QString myHidePath = QString("%1/hide").arg(path);
-    QString myQuitPath = QString("%1/quit").arg(path);
+    QByteArray myControlPath = QByteArray(path) + "/control";
+    QByteArray myProgramPath = QByteArray(path) + "/program";
+    QByteArray myConfigurePath = QByteArray(path) + "/configure";
+    QByteArray myRatePath = QByteArray(path) + "/sample-rate";
+    QByteArray myShowPath = QByteArray(path) + "/show";
+    QByteArray myHidePath = QByteArray(path) + "/hide";
+    QByteArray myQuitPath = QByteArray(path) + "/quit";
 
     osc_server = lo_server_new(NULL, osc_error);
     lo_server_add_method(osc_server, myControlPath, "if", control_handler, &gui);
@@ -473,9 +481,9 @@ main(int argc, char **argv)
 
     lo_address hostaddr = lo_address_new(host, port);
     lo_send(hostaddr,
-	    QString("%1/update").arg(path),
+	    QByteArray(path) + "/update",
 	    "s",
-	    QString("%1%2").arg(lo_server_get_url(osc_server)).arg(path+1).data());
+	    (QByteArray(lo_server_get_url(osc_server))+QByteArray(path+1)).data());
 
     QObject::connect(&application, SIGNAL(aboutToQuit()), &gui, SLOT(aboutToQuit()));
 

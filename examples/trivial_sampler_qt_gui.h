@@ -13,12 +13,12 @@
 #ifndef _TRIVIAL_SAMPLER_QT_GUI_H_INCLUDED_
 #define _TRIVIAL_SAMPLER_QT_GUI_H_INCLUDED_
 
-#include <qframe.h>
-#include <qcheckbox.h>
-#include <qspinbox.h>
-#include <qlabel.h>
-#include <qslider.h>
-#include <qlayout.h>
+#include <QFrame>
+#include <QCheckBox>
+#include <QSpinBox>
+#include <QLabel>
+#include <QSlider>
+#include <QLayout>
 
 extern "C" {
 #include <lo/lo.h>
@@ -29,9 +29,9 @@ class SamplerGUI : public QFrame
     Q_OBJECT
 
 public:
-    SamplerGUI(bool stereo, QString host, QString port,
-	       QString controlPath, QString midiPath, QString programPath,
-	       QString exitingPath, QWidget *w = 0);
+    SamplerGUI(bool stereo, const char * host, const char * port,
+	       QByteArray controlPath, QByteArray midiPath, QByteArray programPath,
+	       QByteArray exitingPath, QWidget *w = 0);
     virtual ~SamplerGUI();
 
     bool ready() const { return m_ready; }
@@ -75,10 +75,10 @@ protected:
     QSlider *m_balance;
 
     lo_address m_host;
-    QString m_controlPath;
-    QString m_midiPath;
-    QString m_configurePath;
-    QString m_exitingPath;
+    QByteArray m_controlPath;
+    QByteArray m_midiPath;
+    QByteArray m_configurePath;
+    QByteArray m_exitingPath;
 
     QString m_file;
     QString m_projectDir;
