@@ -1,10 +1,18 @@
 ## Process this file with automake to produce Makefile.in
 
 if HAVE_LIBLO
-bin_PROGRAMS = dssi_osc_send dssi_osc_update
+bin_PROGRAMS = dssi_analyse_plugin dssi_list_plugins dssi_osc_send dssi_osc_update
 else
-bin_PROGRAMS =
+bin_PROGRAMS = dssi_analyse_plugin dssi_list_plugins
 endif
+
+dssi_analyse_plugin_SOURCES = dssi_analyse_plugin.c
+dssi_analyse_plugin_CFLAGS = -I$(top_srcdir)/dssi $(AM_CFLAGS) $(ALSA_CFLAGS)
+dssi_analyse_plugin_LDADD = $(AM_LDFLAGS) -ldl
+
+dssi_list_plugins_SOURCES = dssi_list_plugins.c
+dssi_list_plugins_CFLAGS = -I$(top_srcdir)/dssi $(AM_CFLAGS) $(ALSA_CFLAGS)
+dssi_list_plugins_LDADD = $(AM_LDFLAGS) -ldl
 
 dssi_osc_send_SOURCES = dssi_osc_send.c
 dssi_osc_send_CFLAGS = -I$(top_srcdir)/dssi $(AM_CFLAGS) $(LIBLO_CFLAGS)
@@ -50,8 +58,10 @@ less_trivial_synth_la_LDFLAGS = -module -avoid-version
 trivial_sampler_la_LDFLAGS = -module -avoid-version
 karplong_la_LDFLAGS = -module -avoid-version
 if DARWIN
+trivial_synth_la_LIBADD = -lm -lmx
 less_trivial_synth_la_LIBADD = -lm -lmx
 else
+trivial_synth_la_LIBADD = -lm
 less_trivial_synth_la_LIBADD = -lm
 endif
 
@@ -98,7 +108,7 @@ trivial_sampler_qt_SOURCES = \
 
 nodist_trivial_sampler_qt_SOURCES = $(trivial_sampler_MOC)
 
-trivial_sampler_qt_CXXFLAGS = $(AM_CXXFLAGS) -I$(top_srcdir)/dssi $(QT_CFLAGS) $(LIBLO_CFLAGS) $(SNDFILE_CFLAGS)
+trivial_sampler_qt_CXXFLAGS = $(AM_CXXFLAGS) -I$(top_srcdir)/dssi $(ALSA_CFLAGS) $(QT_CFLAGS) $(LIBLO_CFLAGS) $(SNDFILE_CFLAGS)
 trivial_sampler_qt_LDADD = $(AM_LDFLAGS) $(QT_LIBS) $(LIBLO_LIBS) $(SNDFILE_LIBS)
 
 %.moc.cpp: %.h

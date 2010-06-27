@@ -17,6 +17,9 @@ You'll find here:
   examples/dssi_osc_send.c
   examples/dssi_osc_update.c -- simple DSSI OSC test programs
 
+  examples/dssi_list_plugins.c -- a program to list available plugins
+  examples/dssi_analyse_plugin.c -- a program to describe a plugin
+
   examples/trivial_synth.c -- a quite useless but fairly clear
   illustrative synth plugin
 
@@ -56,7 +59,7 @@ To build the included host and plugins, you will also need:
 To build the less_trivial_synth and trivial_sampler Qt GUIs, you
 will need:
 
-  Qt 3
+  Qt 4
 
 Note that because DSSI itself is just an API, it is possible to use
 DSSI applications (say, Rosegarden with Xsynth-DSSI) without any of
@@ -76,17 +79,13 @@ for generic installation instructions.
 
 You will need to ensure PKG_CONFIG_PATH is set correctly to locate
 the pkgconfig files for ALSA or libdssialsacompat, liblo, JACK,
-sndfile, and samplerate.  You may also need to set the QTDIR and/or
-QTINCDIR variables to point to your Qt installation.  If you do not
-have any of these, any DSSI programs or plugins dependent on them
-will not be built.
+sndfile, samplerate, and Qt 4. If you do not have any of these, any
+DSSI programs or plugins dependent on them will not be built.
 
 For example, to build on Debian I use:
 
-  $ QTDIR=/usr
-  $ QTINCDIR=/usr/include/qt3
   $ PKG_CONFIG_PATH=/usr/lib/pkgconfig
-  $ export QTDIR QTINCDIR PKG_CONFIG_PATH
+  $ export PKG_CONFIG_PATH
   $ ./configure
   $ make && make check
 

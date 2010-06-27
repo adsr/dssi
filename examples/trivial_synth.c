@@ -182,9 +182,9 @@ int getControllerTS(LADSPA_Handle instance, unsigned long port)
 {
     switch (port) {
     case TS_VOLUME:
-	return 7;
+	return DSSI_CC(7);
     case TS_FREQ:
-	return 9;
+	return DSSI_CC(9);
     }
 
     return -1;

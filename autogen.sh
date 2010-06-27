@@ -35,7 +35,7 @@ lessthan () {
 
 amver=$( automake --version | head -n 1 | sed "s/.* //" );
 if lessthan $amver $AUTOMAKE_REQ ; then
-    echo "you must have automake version >= $AUTOMAKE_REQ to proper plugin support"
+    echo "you must have automake version >= $AUTOMAKE_REQ for proper plugin support"
     exit 1
 fi
 

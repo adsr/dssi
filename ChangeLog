@@ -1,3 +1,24 @@
+20100627 CVS commit smbolton
+
+ * Added dssi_list_plugins and dssi_analyse_plugin tools.
+
+ * Updated README for Qt 4 and new tools.
+
+ * Fixed jack-dssi-host.c ALSA client ports to be of type
+     'application'.
+
+ * Fixed trivial_synth.c getControllerTS() to use DSSI_CC().
+
+ * examples/Makefile.am fixes: reverted trivial_sampler_qt_CXXFLAGS
+     to again include $(ALSA_CFLAGS); added math lib to
+     trivial_synth_la_LIBADD.
+
+ * Version bump to 1.0.1.
+
+20100601 CVS commit smbolton
+
+ * Updated example GUIs to use Qt 4 (thanks to Charles Flèche!)
+
 20100530 CVS commit smbolton
 
  * Fixed an uninitialized variable bug in less_trivial_synth.c.

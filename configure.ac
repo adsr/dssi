@@ -1,6 +1,6 @@
 dnl Process this file with autoconf to produce a configure script.
 
-AC_INIT(DSSI, 1.0.0, dssi-devel@lists.sourceforge.net)
+AC_INIT(DSSI, 1.0.1, dssi-devel@lists.sourceforge.net)
 
 AC_CONFIG_SRCDIR(dssi/dssi.h)
 AM_INIT_AUTOMAKE
@@ -49,10 +49,10 @@ AC_SUBST(SRC_LIBS)
 
 dnl Check for Qt
 with_qt=no
-PKG_CHECK_MODULES(QT, [QtCore >= 4.0 QtGui >= 4.0],
+PKG_CHECK_MODULES(QT, [QtCore >= 4.0.1 QtGui >= 4.0.1],
     [with_qt=yes
      QT_MOC=`$PKG_CONFIG --variable=moc_location QtCore`],
-    AC_MSG_WARN([pkg-config could not find Qt >= 4.0]))
+    AC_MSG_WARN([pkg-config could not find Qt >= 4.0.1]))
 AC_SUBST(QT_CFLAGS)
 AC_SUBST(QT_LIBS)
 AC_SUBST(QT_MOC)
@@ -127,6 +127,7 @@ if test -z "$jack_dssi_host_needs" ; then
 else
     echo "* building jack-dssi-host:            no (missing$jack_dssi_host_needs)"
 fi
+echo "* building DSSI list/analyse tools:   yes"
 if test -z "$dssi_osc_tools_needs" ; then
     echo "* building DSSI OSC tools:            yes"
 else

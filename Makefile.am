@@ -20,7 +20,12 @@ include_HEADERS = dssi/dssi.h
 pkgconfigdir = $(libdir)/pkgconfig
 pkgconfig_DATA = dssi.pc
 
-dist_man_MANS = doc/dssi_osc_send.1 doc/dssi_osc_update.1 doc/jack-dssi-host.1
+dist_man_MANS = \
+	doc/dssi_analyse_plugin.1 \
+	doc/dssi_list_plugins.1 \
+	doc/dssi_osc_send.1 \
+	doc/dssi_osc_update.1 \
+	doc/jack-dssi-host.1
 
 doc/%.html:	doc/%.txt
 	perl ./scripts/txt2html.pl $< | perl ./scripts/tableofcontents.pl > $@
