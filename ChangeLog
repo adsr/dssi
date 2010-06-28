@@ -1,3 +1,8 @@
+20100628 CVS commit smbolton
+
+ * Fixed configure.ac to check for OS X Qt 4 frameworks, and to add
+     '-lX11' to QT_LIBS when Qt is X11-based.
+
 20100627 CVS commit smbolton
 
  * Added dssi_list_plugins and dssi_analyse_plugin tools.
