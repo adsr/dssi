@@ -736,6 +736,8 @@ main(int argc, char **argv)
     int i, reps, j;
     int in, out, controlIn, controlOut;
     char clientName[33];
+    int haveClientName = 0;
+    const int clientLen = 32;
     jack_status_t status;
 
     setsid();
@@ -779,11 +781,12 @@ main(int argc, char **argv)
     /* Parse args and report usage */
 
     if (argc < 2) {
-	fprintf(stderr, "\nUsage: %s [-v] [-a] [-n] [-p <projdir>] [-<i>] <libname>[%c<label>] [...]\n", argv[0], LABEL_SEP);
+	fprintf(stderr, "\nUsage: %s [-v] [-a] [-n] [-p <projdir>] [-c <cname>] [-<i>] <libname>[%c<label>] [...]\n", argv[0], LABEL_SEP);
 	fprintf(stderr, "\n  -v        Verbose mode\n");
 	fprintf(stderr, "  -a        Don't autoconnect outputs to JACK physical outputs\n");
 	fprintf(stderr, "  -n        Don't automatically start plugin GUIs\n");
 	fprintf(stderr, "  <projdir> Project directory to pass to plugin and UI\n");
+	fprintf(stderr, "  <cname>   Client name to use for ALSA and JACK\n");
 	fprintf(stderr, "  <i>       Number of instances of each plugin to run (max %d total, default 1)\n", D3H_MAX_INSTANCES);
 	fprintf(stderr, "  <libname> DSSI plugin library .so to load (searched for in $DSSI_PATH)\n");
 	fprintf(stderr, "  <label>   Label of plugin to load from library\n");
@@ -821,6 +824,18 @@ main(int argc, char **argv)
 		projectDirectory = argv[++i];
 	    } else {
 		fprintf(stderr, "%s: project directory expected after -p\n", myName);
+		return 2;
+	    }
+	    continue;
+	}
+
+	if (!strcmp(argv[i], "-c")) {
+	    if (i < argc - 1) {
+		strncpy(clientName, argv[++i], clientLen);
+		clientName[clientLen] = '\0';
+		haveClientName = 1;
+	    } else {
+		fprintf(stderr, "%s: client name expected after -c\n", myName);
 		return 2;
 	    }
 	    continue;
@@ -1060,10 +1075,12 @@ main(int argc, char **argv)
 
     /* Create buffers and JACK client and ports */
 
-    if (instance_count > 1) strcpy(clientName, "jack-dssi-host");
-    else {
-	strncpy(clientName, instances[0].plugin->descriptor->LADSPA_Plugin->Name, 32);
-	clientName[32] = '\0';
+    if (!haveClientName) {
+	if (instance_count > 1) strcpy(clientName, "jack-dssi-host");
+	else {
+	    strncpy(clientName, instances[0].plugin->descriptor->LADSPA_Plugin->Name, clientLen);
+	    clientName[clientLen] = '\0';
+	}
     }
 
     if ((jackClient = jack_client_open(clientName, 0, &status)) == 0) {
@@ -1072,8 +1089,8 @@ main(int argc, char **argv)
         return 1;
     }
     if (status & JackNameNotUnique) {
-        strncpy(clientName, jack_get_client_name(jackClient), 32);
-	clientName[32] = '\0';
+        strncpy(clientName, jack_get_client_name(jackClient), clientLen);
+	clientName[clientLen] = '\0';
     }
 
     sample_rate = jack_get_sample_rate(jackClient);
@@ -1123,13 +1140,21 @@ main(int argc, char **argv)
 	}
 	for (j = 0; j < instances[i].plugin->ins; ++j) {
 	    char portName[40];
-	    strncpy(portName, instances[i].plugin->descriptor->LADSPA_Plugin->Name, 30);
-	    if (reps > 0) {
-		portName[25] = '\0';
-		sprintf(portName + strlen(portName), " %d in_%d", reps, j + 1);
+	    if (haveClientName) {
+		/* if we're given a specific client name for the whole
+		   application, just name our individual ports by
+		   number rather than by instance
+		*/
+		sprintf(portName, "in_%d", in);
 	    } else {
-		portName[30] = '\0';
-		sprintf(portName + strlen(portName), " in_%d", j + 1);
+		strncpy(portName, instances[i].plugin->descriptor->LADSPA_Plugin->Name, 30);
+		if (reps > 0) {
+		    portName[25] = '\0';
+		    sprintf(portName + strlen(portName), " %d in_%d", reps, j + 1);
+		} else {
+		    portName[30] = '\0';
+		    sprintf(portName + strlen(portName), " in_%d", j + 1);
+		}
 	    }
 	    inputPorts[in] = jack_port_register(jackClient, portName,
 						JACK_DEFAULT_AUDIO_TYPE,
@@ -1140,13 +1165,21 @@ main(int argc, char **argv)
 	}
 	for (j = 0; j < instances[i].plugin->outs; ++j) {
 	    char portName[40];
-	    strncpy(portName, instances[i].plugin->descriptor->LADSPA_Plugin->Name, 30);
-	    if (reps > 0) {
-		portName[25] = '\0';
-		sprintf(portName + strlen(portName), " %d out_%d", reps, j + 1);
+	    if (haveClientName) {
+		/* if we're given a specific client name for the whole
+		   application, just name our individual ports by
+		   number rather than by instance
+		*/
+		sprintf(portName, "out_%d", out);
 	    } else {
-		portName[30] = '\0';
-		sprintf(portName + strlen(portName), " out_%d", j + 1);
+		strncpy(portName, instances[i].plugin->descriptor->LADSPA_Plugin->Name, 30);
+		if (reps > 0) {
+		    portName[25] = '\0';
+		    sprintf(portName + strlen(portName), " %d out_%d", reps, j + 1);
+		} else {
+		    portName[30] = '\0';
+		    sprintf(portName + strlen(portName), " out_%d", j + 1);
+		}
 	    }
 	    outputPorts[out] = jack_port_register(jackClient, portName,
 						  JACK_DEFAULT_AUDIO_TYPE,
@@ -1312,7 +1345,7 @@ main(int argc, char **argv)
 
     if ((portid = snd_seq_create_simple_port
 	 (alsaClient, clientName,
-	  SND_SEQ_PORT_CAP_WRITE | SND_SEQ_PORT_CAP_SUBS_WRITE, SND_SEQ_PORT_TYPE_APPLICATION)) < 0) {
+	  SND_SEQ_PORT_CAP_WRITE | SND_SEQ_PORT_CAP_SUBS_WRITE, 0)) < 0) {
 	fprintf(stderr, "\n%s: Error: Failed to create ALSA sequencer port\n",
 		myName);
 	return 1;
