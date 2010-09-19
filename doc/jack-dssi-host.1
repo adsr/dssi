@@ -2,7 +2,7 @@
 .\" First parameter, NAME, should be all caps
 .\" Second parameter, SECTION, should be 1-8, maybe w/ subsection
 .\" other parameters are allowed: see man(7), man(1)
-.TH jack-dssi-host 1 "January 5th, 2009"
+.TH jack-dssi-host 1 "September 18th, 2010"
 .\" Please adjust this date whenever revising the manpage.
 .\"
 .\" Some roff macros, for reference:
@@ -16,20 +16,20 @@
 .\" .sp <n>    insert n+1 empty lines
 .\" for manpage-specific macros, see man(7)
 .SH NAME
-jack-dssi-host
+jack-dssi-host \- a simple JACK host for DSSI plugins
 .SH SYNOPSIS
 .B jack-dssi-host
-.I [-v] [-a] [-n] [-p <projdir>] [-<i>] <libname>[:<label>] [...]
+.I [-v] [-a] [-n] [-p <projdir>] [-c <cname>] [-<i>] <libname>[:<label>] [...]
 .SH DESCRIPTION
 .B jack-dssi-host
 is a simple DSSI host that listens for MIDI events on an ALSA
-sequencer port, delivers them to DSSI synths plugins, and outputs
+sequencer port, delivers them to DSSI synth plugins, and outputs
 the resulting audio via JACK.
 .br
 .B jack-dssi-host
 can host up to 16 instances of DSSI synth plugins, each of which is
 sequentially assigned a MIDI channel from 1 to 16.  Plugin outputs
-(if `-a' is not specified) are connectioned sequentially to the
+(if `-a' is not specified) are connected sequentially to the
 available JACK physical output ports, wrapping back to the first
 JACK port whenever the available ports are exhausted.  Plugin user
 interfaces (UIs) are started for each instance (if '-n' is not specified.)
@@ -61,6 +61,9 @@ Disable automatic starting of plugin user interfaces (UIs).
 .B -p <projdir>
 The project directory to pass to both plugin and UI.
 .TP
+.B -c <cname>
+The client name to use for ALSA and JACK.
+.TP
 .B -<i>
 Number of instances of the following plugin to run (max 16 total,
 default 1).
@@ -81,9 +84,9 @@ Optionally more instance counts, plugins and labels.
 .B jack-dssi-host -2 lib1.so -1 lib2.so:fuzzy
 .br
 Runs two instances of the first plugin found in lib1.so, assigned to MIDI
-channels 0 and 1 and connected to the first available JACK outputs, and one
-instance of the "fuzzy" plugin in lib2.so with MIDI channels 2 and 3 and
-connected to the next available JACK outputs.
+channels 1 and 2 and connected to the first available JACK outputs, and one
+instance of the "fuzzy" plugin in lib2.so on MIDI channel 3 and
+connected to the next available JACK output.
 .SH ENVIRONMENT
 .B jack-dssi-host
 will search for plugin shared libraries in the directories specified

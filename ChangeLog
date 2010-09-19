@@ -1,3 +1,11 @@
+20100919 CVS commit and 1.1.0 release, smbolton
+
+ * Man page updates.
+
+20100916 CVS commit cannam
+
+ * Added '-c' option for client name to jack-dssi-host.
+
 20100628 CVS commit smbolton
 
  * Fixed configure.ac to check for OS X Qt 4 frameworks, and to add

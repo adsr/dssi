@@ -1,6 +1,6 @@
 dnl Process this file with autoconf to produce a configure script.
 
-AC_INIT(DSSI, 1.0.1, dssi-devel@lists.sourceforge.net)
+AC_INIT(DSSI, 1.1.0, dssi-devel@lists.sourceforge.net)
 
 AC_CONFIG_SRCDIR(dssi/dssi.h)
 AM_INIT_AUTOMAKE
