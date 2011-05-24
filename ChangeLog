@@ -1,3 +1,10 @@
+20110523 CVS commit smbolton
+
+ * Fixed linking with GNU gold linker (thanks to Alessio Treglia for
+     the bug report).
+
+ * Use RTLD_LOCAL when dlopen()ing plugins.
+
 20100919 CVS commit and 1.1.0 release, smbolton
 
  * Man page updates.

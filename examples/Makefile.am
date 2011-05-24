@@ -65,7 +65,7 @@ trivial_synth_la_LIBADD = -lm
 less_trivial_synth_la_LIBADD = -lm
 endif
 
-trivial_sampler_la_LIBADD = -lpthread $(SNDFILE_LIBS) $(SRC_LIBS)
+trivial_sampler_la_LIBADD = -lpthread -lm $(SNDFILE_LIBS) $(SRC_LIBS)
 
 if HAVE_LIBLO
 if HAVE_QT

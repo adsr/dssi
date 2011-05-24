@@ -22,6 +22,6 @@ jack_dssi_host_CFLAGS = -I$(top_srcdir)/dssi $(AM_CFLAGS) $(ALSA_CFLAGS) $(LIBLO
 if DARWIN
 jack_dssi_host_LDADD = $(AM_LDFLAGS) -lmx $(ALSA_LIBS) $(LIBLO_LIBS) $(JACK_LIBS)
 else
-jack_dssi_host_LDADD = $(AM_LDFLAGS) $(ALSA_LIBS) $(LIBLO_LIBS) $(JACK_LIBS)
+jack_dssi_host_LDADD = $(AM_LDFLAGS) $(ALSA_LIBS) $(LIBLO_LIBS) $(JACK_LIBS) -lm -ldl
 endif
 

@@ -466,6 +466,10 @@ audio_callback(jack_nframes_t nframes, void *arg)
     return 0;
 }
 
+#ifndef RTLD_LOCAL
+#define RTLD_LOCAL  (0)
+#endif
+
 char *
 load(const char *dllName, void **dll, int quiet) /* returns directory where dll found */
 {
@@ -476,7 +480,10 @@ load(const char *dllName, void **dll, int quiet) /* returns directory where dll 
 
     /* If the dllName is an absolute path */
     if (*dllName == '/') {
-	if ((handle = dlopen(dllName, RTLD_NOW))) {  /* real-time programs should not use RTLD_LAZY */
+	if ((handle = dlopen(dllName, RTLD_NOW |       /* real-time programs should not use RTLD_LAZY */
+                                      RTLD_LOCAL))) {  /* do not share symbols across plugins
+                                                        * (some systems (e.g. Mac OS X) default
+                                                        * to RTLD_GLOBAL!) */
 	    *dll = handle;
             path = strdup(dllName);
 	    return dirname(path);
@@ -528,7 +535,8 @@ load(const char *dllName, void **dll, int quiet) /* returns directory where dll 
 	filePath = (char *)malloc(strlen(element) + strlen(dllName) + 2);
 	sprintf(filePath, "%s/%s", element, dllName);
 
-	if ((handle = dlopen(filePath, RTLD_NOW))) {  /* real-time programs should not use RTLD_LAZY */
+	if ((handle = dlopen(filePath, RTLD_NOW |       /* real-time programs should not use RTLD_LAZY */
+                                       RTLD_LOCAL))) {  /* do not share symbols across plugins */
 	    if (!quiet && verbose) {
 		fprintf(stderr, "found\n");
 	    }
