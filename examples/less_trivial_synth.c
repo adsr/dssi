@@ -56,7 +56,7 @@ long int lrintf (float x);
 static LADSPA_Descriptor *ltsLDescriptor = NULL;
 static DSSI_Descriptor *ltsDDescriptor = NULL;
 
-float *table[2];
+static float *table[2];
 
 typedef enum {
     inactive = 0,
