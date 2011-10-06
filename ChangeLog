@@ -1,3 +1,7 @@
+20111006 CVS commit cannam
+
+ * Fixed crash in less_trivial_synth.c in init() with gcc 4.6
+
 20110523 CVS commit smbolton
 
  * Fixed linking with GNU gold linker (thanks to Alessio Treglia for
